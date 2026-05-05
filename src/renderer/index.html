@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Boomm Printer Desktop</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .header {
+      background: #1e293b;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #334155;
+      flex-shrink: 0;
+    }
+
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header h1 { font-size: 17px; font-weight: 700; color: #f97316; }
+    .header .version { font-size: 11px; color: #64748b; }
+
+    .badge {
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-success { background: #16a34a22; color: #4ade80; border: 1px solid #16a34a44; }
+    .badge-error   { background: #dc262622; color: #f87171; border: 1px solid #dc262644; }
+    .badge-warning { background: #d9770622; color: #fbbf24; border: 1px solid #d9770644; }
+
+    nav {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    .nav-link {
+      padding: 10px 16px;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .nav-link:hover { color: #e2e8f0; }
+    .nav-link.active { color: #f97316; border-bottom-color: #f97316; }
+
+    .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      color: #f1f5f9;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stat-value { font-size: 26px; font-weight: 700; color: #f97316; }
+    .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+    .log-entry {
+      padding: 5px 0;
+      border-bottom: 1px solid #1e293b;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .log-entry.error { color: #f87171; }
+    .log-entry.success { color: #4ade80; }
+    .log-time { color: #475569; margin-right: 8px; font-family: monospace; }
+
+    .printer-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .printer-item.default { border-color: #f97316; }
+    .printer-icon { font-size: 20px; }
+    .printer-info { flex: 1; }
+    .printer-name { font-size: 14px; font-weight: 600; }
+    .printer-details { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .printer-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      background: #f9731622;
+      color: #f97316;
+      border: 1px solid #f9731644;
+      border-radius: 4px;
+    }
+
+    .job-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .job-item.status-processing { border-color: #f97316; }
+    .job-item.status-completed  { border-color: #16a34a; }
+    .job-item.status-failed     { border-color: #dc2626; }
+    .job-id   { color: #64748b; font-family: monospace; min-width: 60px; }
+    .job-name { flex: 1; }
+    .job-status {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #334155;
+    }
+
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 8px 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-group input:focus { border-color: #f97316; }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #f97316; color: white; }
+    .btn-primary:hover { background: #ea6c0a; }
+    .btn-primary:disabled { background: #7c3a11; color: #9a4a1a; cursor: not-allowed; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+
+    .empty-state {
+      text-align: center;
+      color: #475569;
+      padding: 32px;
+      font-size: 13px;
+    }
+
+    #alerts-container {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      width: 310px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      animation: fadeIn 0.2s ease;
+    }
+    .alert-success { background: #16a34a22; border: 1px solid #16a34a; color: #4ade80; }
+    .alert-error   { background: #dc262622; border: 1px solid #dc2626; color: #f87171; }
+    .alert-info    { background: #0ea5e922; border: 1px solid #0ea5e9; color: #38bdf8; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .toolbar .section-title { margin: 0; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>🖨️ Boomm Printer</h1>
+    <span class="version">v0.1.0 Desktop</span>
+  </div>
+  <span id="status-badge" class="badge badge-warning">Aguardando</span>
+</div>
+
+<nav>
+  <span class="nav-link active" data-section="dashboard">Dashboard</span>
+  <span class="nav-link" data-section="printers">Impressoras</span>
+  <span class="nav-link" data-section="jobs">Jobs</span>
+  <span class="nav-link" data-section="settings">Configurações</span>
+</nav>
+
+<div class="content">
+
+  <!-- Dashboard -->
+  <div id="dashboard" class="section active">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-printers">—</div>
+        <div class="stat-label">Impressoras</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-jobs-done">0</div>
+        <div class="stat-label">Concluídos</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-jobs-fail">0</div>
+        <div class="stat-label">Falhas</div>
+      </div>
+    </div>
+
+    <h2 class="section-title">Atividade Recente</h2>
+    <div class="card">
+      <div id="activity-log">
+        <p class="empty-state">Aguardando atividade...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Impressoras -->
+  <div id="printers" class="section">
+    <div class="toolbar">
+      <h2 class="section-title">Impressoras Locais</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" id="refresh-printers-btn">↻ Atualizar</button>
+        <button class="btn btn-secondary" id="sync-printers-btn">☁️ Sincronizar</button>
+      </div>
+    </div>
+    <div id="printers-list">
+      <p class="empty-state">Carregando impressoras...</p>
+    </div>
+  </div>
+
+  <!-- Jobs -->
+  <div id="jobs" class="section">
+    <h2 class="section-title">Fila de Impressão</h2>
+    <div id="jobs-list">
+      <p class="empty-state">Nenhum job recente</p>
+    </div>
+  </div>
+
+  <!-- Configurações -->
+  <div id="settings" class="section">
+    <h2 class="section-title">Configurações</h2>
+    <div class="card">
+      <form id="settings-form">
+        <div class="form-group">
+          <label>URL da API (SaaS Boomm Printer)</label>
+          <input type="url" id="apiUrl" placeholder="https://seu-app.base44.com" required>
+        </div>
+        <div class="form-group">
+          <label>Chave de API</label>
+          <input type="password" id="apiKey" placeholder="Sua chave de API" required>
+        </div>
+        <div class="form-group">
+          <label>Nome do Computador</label>
+          <input type="text" id="computerName" placeholder="Nome para identificar este computador">
+        </div>
+        <div class="form-group">
+          <label>Intervalo de Polling (ms)</label>
+          <input type="number" id="pollingInterval" min="2000" max="60000" step="1000" value="5000">
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn btn-primary">Salvar Configurações</button>
+          <button type="button" class="btn btn-secondary" id="test-conn-btn">Testar Conexão</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<div id="alerts-container"></div>
+
+<script src="renderer.js"></script>
+</body>
+</html>
