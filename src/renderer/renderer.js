@@ -13,6 +13,15 @@ document.querySelectorAll('.nav-link').forEach((link) => {
   });
 });
 
+function switchTab(name) {
+  document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
+  document.querySelectorAll('.section').forEach((s) => s.classList.remove('active'));
+  const link = document.querySelector(`[data-section="${name}"]`);
+  if (link) link.classList.add('active');
+  const sec = document.getElementById(name);
+  if (sec) sec.classList.add('active');
+}
+
 // --- Init ---
 async function init() {
   const s = await api.getSettings();
@@ -31,6 +40,16 @@ async function init() {
   api.onJobUpdate(handleJobUpdate);
   api.onPairingStatus((d) => setPairingUI(d.isPaired, d.computerId));
   api.onUpdater(handleUpdater);
+  api.onDeepLinkPair(handleDeepLink);
+}
+
+// --- Deep link ---
+function handleDeepLink(d) {
+  if (d.apiUrl) document.getElementById('apiUrl').value = d.apiUrl;
+  if (d.key) document.getElementById('printAccessKey').value = d.key;
+  setPairingUI(false, null);
+  switchTab('settings');
+  setTimeout(() => document.getElementById('pair-btn').click(), 300);
 }
 
 // --- Pairing ---
@@ -88,7 +107,6 @@ function handleUpdater(d) {
       updateMessage.textContent = 'Verificando atualizações...';
       updateStatusMsg.textContent = 'Verificando...';
       break;
-
     case 'available':
       showBanner('default');
       updateIcon.textContent = '⬆️';
@@ -96,22 +114,19 @@ function handleUpdater(d) {
       btnDownload.style.display = 'inline-block';
       updateStatusMsg.textContent = `Versão ${d.version} disponível`;
       break;
-
     case 'latest':
       hideBanner();
       updateStatusMsg.textContent = 'Você já está na versão mais recente.';
       break;
-
     case 'downloading':
       showBanner('default');
       updateIcon.textContent = '⏬';
-      updateMessage.textContent = `Baixando atualização...`;
+      updateMessage.textContent = 'Baixando atualização...';
       updateProgressWrap.style.display = 'flex';
       updateProgressFill.style.width = `${d.percent}%`;
       updatePercent.textContent = `${d.percent}%`;
       updateStatusMsg.textContent = `Baixando: ${d.percent}%`;
       break;
-
     case 'ready':
       showBanner('ready');
       updateIcon.textContent = '✅';
@@ -119,7 +134,6 @@ function handleUpdater(d) {
       btnInstall.style.display = 'inline-block';
       updateStatusMsg.textContent = `Versão ${d.version} baixada — pronta para instalar.`;
       break;
-
     case 'error':
       showBanner('error');
       updateIcon.textContent = '⚠️';
@@ -133,9 +147,7 @@ function handleUpdater(d) {
 function showBanner(type) {
   updateBanner.className = `update-banner visible${ type === 'ready' ? ' state-ready' : type === 'error' ? ' state-error' : '' }`;
 }
-function hideBanner() {
-  updateBanner.className = 'update-banner';
-}
+function hideBanner() { updateBanner.className = 'update-banner'; }
 
 btnDownload.addEventListener('click', () => api.downloadUpdate());
 btnInstall.addEventListener('click', () => api.installUpdate());

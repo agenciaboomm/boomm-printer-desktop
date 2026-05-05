@@ -3,6 +3,7 @@ const os = require('os');
 const Store = require('electron-store');
 
 const store = new Store();
+const { version: APP_VERSION } = require('../../package.json');
 
 function getClient(authToken) {
   const apiUrl = store.get('apiUrl');
@@ -14,7 +15,7 @@ function getClient(authToken) {
       Authorization: `Bearer ${authToken}`,
       'Content-Type': 'application/json',
       'X-App': 'boomm-printer-desktop',
-      'X-Version': '0.1.0',
+      'X-Version': APP_VERSION,
     },
     timeout: 15000,
   });
@@ -39,7 +40,7 @@ async function pairWithKey(printAccessKey, computerName, printers) {
     headers: {
       'Content-Type': 'application/json',
       'X-App': 'boomm-printer-desktop',
-      'X-Version': '0.1.0',
+      'X-Version': APP_VERSION,
     },
     timeout: 15000,
   });
@@ -50,7 +51,7 @@ async function pairWithKey(printAccessKey, computerName, printers) {
     hostname: os.hostname(),
     os: process.platform,
     arch: process.arch,
-    app_version: '0.1.0',
+    app_version: APP_VERSION,
     local_printers: printers.map((p) => ({
       name: p.name,
       port: p.port || '',
@@ -67,9 +68,23 @@ async function pairWithKey(printAccessKey, computerName, printers) {
 }
 
 async function testConnection() {
-  const client = getPairedClient();
-  const res = await client.get('/api/desktop/ping');
-  return res.data;
+  const deviceToken = store.get('deviceToken');
+  if (!deviceToken) {
+    return { connected: false, message: 'App não pareado. Clique em "Parear Agora" primeiro.' };
+  }
+  try {
+    const client = getPairedClient();
+    const res = await client.post('/api/desktop/heartbeat', {
+      status: 'online',
+      timestamp: new Date().toISOString(),
+    });
+    return { connected: true, ...res.data };
+  } catch (err) {
+    const status = err.response?.status;
+    if (status === 401) throw new Error('Token inválido (401). Refaça o pareamento.');
+    if (status === 405) throw new Error('Método não permitido (405). Verifique a URL do SaaS.');
+    throw err;
+  }
 }
 
 async function heartbeat() {

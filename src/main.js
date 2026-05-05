@@ -17,6 +17,37 @@ const { pairWithKey, testConnection, heartbeat, syncPrinters } = require('./serv
 let mainWindow = null;
 let tray = null;
 let heartbeatTimer = null;
+let pendingDeepLink = null;
+
+// --- Single instance lock + deep link (Windows) ---
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const url = argv.find((a) => a.startsWith('boommprinter://'));
+    if (url) handleDeepLink(url);
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+    else createWindow();
+  });
+}
+
+function handleDeepLink(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname !== 'pair') return;
+    const apiUrl = parsed.searchParams.get('apiUrl') || '';
+    const key = parsed.searchParams.get('key') || '';
+    if (apiUrl) store.set('apiUrl', apiUrl);
+    if (key) store.set('printAccessKey', key);
+    store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
+    stopJobProcessor(); stopHeartbeat();
+    const payload = { apiUrl, key };
+    const hasWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed());
+    if (hasWindow) broadcast('deep-link-pair', payload);
+    else pendingDeepLink = payload;
+  } catch {}
+}
 
 // --- Auto-updater config ---
 autoUpdater.autoDownload = false;
@@ -64,6 +95,12 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingDeepLink) {
+      broadcast('deep-link-pair', pendingDeepLink);
+      pendingDeepLink = null;
+    }
+  });
   mainWindow.on('close', (e) => {
     if (!app.isQuiting) { e.preventDefault(); mainWindow.hide(); }
   });
@@ -94,23 +131,15 @@ function stopHeartbeat() {
 }
 
 async function initializeApp() {
-  const printAccessKey = store.get('printAccessKey');
-  if (!printAccessKey) return;
-  try {
-    if (store.get('deviceToken')) {
-      await syncPrinters(await getPrinters()).catch(() => {});
-      startJobProcessor(); startHeartbeat();
-      broadcast('status-update', { type: 'success', message: 'Conectado ao SaaS Boomm Printer.' });
-    } else {
-      await pairWithKey(printAccessKey, store.get('computerName') || os.hostname(), await getPrinters());
-      startJobProcessor(); startHeartbeat();
-      broadcast('status-update', { type: 'success', message: 'Pareado com sucesso!' });
-    }
-    broadcast('pairing-status', { isPaired: true, computerId: store.get('computerId') });
-  } catch (err) {
-    console.error('Init error:', err.message);
-    broadcast('status-update', { type: 'error', message: 'Erro ao inicializar: ' + err.message });
-  }
+  // Only start if already paired — never auto-pair at startup
+  const deviceToken = store.get('deviceToken');
+  if (!deviceToken) return;
+
+  startJobProcessor();
+  startHeartbeat();
+  getPrinters().then((p) => syncPrinters(p)).catch(() => {}); // background sync, non-fatal
+  broadcast('pairing-status', { isPaired: true, computerId: store.get('computerId') });
+  broadcast('status-update', { type: 'success', message: 'Conectado ao SaaS Boomm Printer.' });
 }
 
 // --- IPC: Settings ---
@@ -154,8 +183,11 @@ ipcMain.handle('get-printers', async () => {
 });
 
 ipcMain.handle('test-connection', async () => {
-  try { return { success: true, ...(await testConnection()) }; }
-  catch (e) { return { success: false, error: e.message }; }
+  try {
+    const result = await testConnection();
+    if (!result.connected) return { success: false, error: result.message };
+    return { success: true, ...result };
+  } catch (e) { return { success: false, error: e.message }; }
 });
 
 ipcMain.handle('sync-printers', async () => {
@@ -175,6 +207,10 @@ ipcMain.on('install-update', () => autoUpdater.quitAndInstall(false, true));
 
 // --- App lifecycle ---
 app.whenReady().then(async () => {
+  // Deep link from first launch: Windows passes URL as a CLI argument
+  const deepLinkArg = process.argv.find((a) => a.startsWith('boommprinter://'));
+  if (deepLinkArg) handleDeepLink(deepLinkArg); // saves to pendingDeepLink (no window yet)
+
   createWindow();
   await createTray();
   await initializeApp();
