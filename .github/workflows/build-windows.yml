@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.2)'
+        description: 'Version to release (e.g. 0.1.6)'
         required: false
-        default: '0.1.2'
+        default: '0.1.6'
 
 permissions:
   contents: write
@@ -26,6 +26,35 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
+
+      - name: Sanity check source files
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json | ConvertFrom-Json
+          Write-Host "=== package.json version: $($pkg.version) ==="
+
+          $renderer = Get-Content src\renderer\renderer.js -Raw
+          $html     = Get-Content src\renderer\index.html  -Raw
+          $api      = Get-Content src\services\api.js       -Raw
+
+          $errors = @()
+
+          if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
+          if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
+          if ($html     -notmatch 'v0\.1\.6')               { $errors += 'index.html: version marker v0.1.6 not found' }
+          if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
+          if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
+          if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
+          if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
+          if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
+          if ($pkg.version -ne '0.1.6')                     { $errors += "package.json version is $($pkg.version), expected 0.1.6" }
+
+          if ($errors.Count -gt 0) {
+            Write-Host ""
+            Write-Error ("Source sanity check FAILED:`n" + ($errors -join "`n"))
+            exit 1
+          }
+          Write-Host "All sanity checks passed for v$($pkg.version)."
 
       - name: Install dependencies
         run: npm install
@@ -84,7 +113,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.2' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.6' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -100,22 +129,24 @@ jobs:
           body: |
             ## Boomm Printer Desktop ${{ steps.tag.outputs.tag }}
 
-            App local Windows para impressão de etiquetas PDF/ZPL com **atualização automática**.
+            App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão
-            - Pareamento via **Chave de acesso de impressão** (gerada no SaaS)
-            - Troca automática de `print_access_key` por `device_token`
-            - **Auto-update**: o próprio app verifica e baixa novas versões
-            - Heartbeat a cada 30 segundos
-            - Botão "Desfazer Pareamento"
+            ### Novidades nesta versão (v0.1.6)
+            - **Fix crítico**: chamadas de API corrigidas para `/functions/desktopApi`
+            - Pareamento, heartbeat, sync de impressoras e jobs agora funcionam corretamente
+            - Removidas chamadas `GET/PATCH /api/desktop/*` que causavam erro 405
 
-            ### Instalação
-            1. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
-            2. Execute como **Administrador**
-            3. Configure em **Configurações**: URL do SaaS + Chave de acesso → **Parear Agora**
+            ### Como confirmar que esta é a versão certa
+            Após instalar, o app deve mostrar exatamente:
+            - Header: **v0.1.6 Desktop**
+            - Configurações: campo **Chave de acesso de impressão**
+            - Botão: **Parear Agora**
+            - Rodapé verde: `build: v0.1.6 | desktopApi`
 
-            ### Atualizações futuras
-            O próprio app verifica automaticamente se existe nova versão ao iniciar e oferece download/instalação direto na interface.
+            ### Instalação limpa (recomendado)
+            1. Feche o app pela bandeja do sistema (botão direito → Sair)
+            2. Desinstale a versão anterior em Configurações do Windows → Aplicativos → BoommPrinter
+            3. Baixe e instale `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe` como Administrador
 
             ### Checksum SHA256
             ```
