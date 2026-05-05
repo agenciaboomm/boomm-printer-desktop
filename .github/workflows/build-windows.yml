@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.4)'
+        description: 'Version to release (e.g. 0.1.5)'
         required: false
-        default: '0.1.4'
+        default: '0.1.5'
 
 permissions:
   contents: write
@@ -39,19 +39,21 @@ jobs:
 
           $errors = @()
 
-          if ($renderer -notmatch 'Parear Agora')        { $errors += 'renderer.js: missing Parear Agora' }
-          if ($html     -notmatch 'acesso de impress')   { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($api      -match    '/api/desktop/ping')   { $errors += 'api.js: still calls deprecated GET /api/desktop/ping' }
-          if ($renderer -match    'v0\.1\.0 Desktop')   { $errors += 'renderer.js: hardcoded v0.1.0 Desktop found' }
-          if ($html     -match    'v0\.1\.0 Desktop')   { $errors += 'index.html: hardcoded v0.1.0 Desktop found' }
-          if ($html     -match    'CHAVE DE API"')       { $errors += 'index.html: old label CHAVE DE API found' }
+          if ($renderer -notmatch 'Parear Agora')          { $errors += 'renderer.js: missing Parear Agora' }
+          if ($html     -notmatch 'acesso de impress')     { $errors += 'index.html: missing Chave de acesso de impressao' }
+          if ($html     -notmatch 'v0\.1\.5')             { $errors += 'index.html: version marker v0.1.5 not found' }
+          if ($api      -match    '/api/desktop/ping')     { $errors += 'api.js: still calls deprecated GET /api/desktop/ping' }
+          if ($renderer -match    'v0\.1\.0 Desktop')     { $errors += 'renderer.js: hardcoded v0.1.0 found' }
+          if ($html     -match    '>CHAVE DE API<')        { $errors += 'index.html: old label CHAVE DE API found' }
+          if ($html     -match    'Chave de API[^a-z]')    { $errors += 'index.html: old text Chave de API found' }
+          if ($pkg.version -ne '0.1.5')                   { $errors += "package.json version is $($pkg.version), expected 0.1.5" }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
             Write-Error ("Source sanity check FAILED:`n" + ($errors -join "`n"))
             exit 1
           }
-          Write-Host "All sanity checks passed."
+          Write-Host "All sanity checks passed for v$($pkg.version)."
 
       - name: Install dependencies
         run: npm install
@@ -110,7 +112,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.4' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.5' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -126,23 +128,20 @@ jobs:
           body: |
             ## Boomm Printer Desktop ${{ steps.tag.outputs.tag }}
 
-            App local Windows para impressão de etiquetas PDF/ZPL com **atualização automática**.
+            App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### O que há nesta versão
-            - UI correta: **Chave de acesso de impressão** + **Parear Agora**
-            - Versão sempre dinâmica via `app.getVersion()` (sem hardcode)
-            - Correção: Testar Conexão usa `POST /api/desktop/heartbeat` (não GET /ping)
-            - Correção: inicialização não bloqueia se SaaS offline
-            - Deeplink `boommprinter://pair?apiUrl=...&key=...` — abre e parea automaticamente
-            - Protocolo `boommprinter://` registrado no Windows pelo instalador
-            - Auto-update via `electron-updater` + `latest.yml`
+            ### Como confirmar que esta é a versão certa
+            Após instalar, o app deve mostrar exatamente:
+            - Header: **v0.1.5 Desktop**
+            - Configurações: campo **Chave de acesso de impressão**
+            - Botão: **Parear Agora**
+            - Rodapé verde: `build: v0.1.5 | print_access_key model`
 
-            ### ⚠️ Instalação limpa (IMPORTANTE)
-            Se já tiver uma versão anterior instalada:
-            1. **Desinstale** a versão antiga em Configurações do Windows → Aplicativos
-            2. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
-            3. Execute como **Administrador**
-            4. Em **Configurações**: cole a URL do SaaS + Chave de acesso de impressão → **Parear Agora**
+            ### ⚠️ Instalação limpa (obrigatório)
+            1. Feche o app pela bandeja do sistema (botão direito → Sair)
+            2. Desinstale a versão anterior em Configurações do Windows → Aplicativos → BoommPrinter
+            3. Apague se existir: `%LOCALAPPDATA%\Programs\BoommPrinter`
+            4. Baixe e instale `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe` como Administrador
 
             ### Checksum SHA256
             ```
