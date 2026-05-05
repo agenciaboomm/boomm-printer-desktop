@@ -9,8 +9,9 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
     .header { background: #1e293b; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; flex-shrink: 0; }
+    .header-left { display: flex; align-items: center; gap: 8px; }
     .header h1 { font-size: 17px; font-weight: 700; color: #f97316; }
-    .version { font-size: 11px; color: #64748b; margin-left: 8px; }
+    .version { font-size: 11px; color: #64748b; }
     .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge-success { background: #16a34a22; color: #4ade80; border: 1px solid #16a34a44; }
     .badge-error   { background: #dc262622; color: #f87171; border: 1px solid #dc262644; }
@@ -19,6 +20,17 @@
     .nav-link { padding: 10px 16px; color: #94a3b8; cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; user-select: none; }
     .nav-link:hover { color: #e2e8f0; }
     .nav-link.active { color: #f97316; border-bottom-color: #f97316; }
+    /* Update banner */
+    .update-banner { flex-shrink: 0; display: none; background: #1e3a5f; border-bottom: 1px solid #2563eb44; padding: 8px 20px; align-items: center; justify-content: space-between; font-size: 13px; gap: 12px; }
+    .update-banner.visible { display: flex; }
+    .update-banner.state-ready { background: #1a3a1a; border-color: #16a34a44; }
+    .update-banner.state-error { background: #3a1a1a; border-color: #dc262644; }
+    .update-inner { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .update-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .progress-wrap { display: flex; align-items: center; gap: 6px; }
+    .progress-bar { width: 80px; height: 4px; background: #334155; border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #3b82f6; border-radius: 2px; transition: width .3s; }
+    /* Content */
     .content { flex: 1; overflow-y: auto; padding: 20px; }
     .section { display: none; }
     .section.active { display: block; }
@@ -47,42 +59,68 @@
     .form-group input:focus { border-color: #f97316; }
     .form-group .hint { font-size: 11px; color: #475569; margin-top: 4px; }
     .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: background .15s; }
+    .btn-sm { padding: 4px 12px; font-size: 12px; }
     .btn-primary { background: #f97316; color: white; } .btn-primary:hover { background: #ea6c0a; }
     .btn-primary:disabled { background: #7c3a11; color: #9a4a1a; cursor: not-allowed; }
     .btn-secondary { background: #334155; color: #e2e8f0; } .btn-secondary:hover { background: #475569; }
     .btn-danger { background: #7f1d1d; color: #fca5a5; } .btn-danger:hover { background: #991b1b; }
+    .btn-blue { background: #1d4ed8; color: white; } .btn-blue:hover { background: #1e40af; }
     .btn-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
     .empty-state { text-align: center; color: #475569; padding: 32px; font-size: 13px; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
     .toolbar .section-title { margin: 0; }
-    #alerts-container { position: fixed; top: 12px; right: 12px; width: 310px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; }
-    .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; animation: fadeIn .2s ease; }
-    .alert-success { background: #16a34a22; border: 1px solid #16a34a; color: #4ade80; }
-    .alert-error   { background: #dc262622; border: 1px solid #dc2626; color: #f87171; }
-    .alert-info    { background: #0ea5e922; border: 1px solid #0ea5e9; color: #38bdf8; }
     .pairing-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
     .pairing-box.paired { border-color: #16a34a44; background: #16a34a0a; }
     .pairing-box.unpaired { border-color: #d9770644; background: #d977060a; }
     .pairing-status-label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .pairing-detail { font-size: 11px; color: #64748b; font-family: monospace; }
+    .update-status-row { display: flex; align-items: center; justify-content: space-between; }
+    .update-status-text { font-size: 13px; color: #94a3b8; }
+    #alerts-container { position: fixed; top: 12px; right: 12px; width: 310px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; }
+    .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; animation: fadeIn .2s ease; }
+    .alert-success { background: #16a34a22; border: 1px solid #16a34a; color: #4ade80; }
+    .alert-error   { background: #dc262622; border: 1px solid #dc2626; color: #f87171; }
+    .alert-info    { background: #0ea5e922; border: 1px solid #0ea5e9; color: #38bdf8; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
   </style>
 </head>
 <body>
+
 <div class="header">
-  <div style="display:flex;align-items:center">
+  <div class="header-left">
     <h1>🖨️ Boomm Printer</h1>
-    <span class="version">v0.1.0 Desktop</span>
+    <span id="app-version" class="version">v0.1.2 Desktop</span>
   </div>
   <span id="status-badge" class="badge badge-warning">Não pareado</span>
 </div>
+
 <nav>
   <span class="nav-link active" data-section="dashboard">Dashboard</span>
   <span class="nav-link" data-section="printers">Impressoras</span>
   <span class="nav-link" data-section="jobs">Jobs</span>
   <span class="nav-link" data-section="settings">Configurações</span>
 </nav>
+
+<!-- Update Banner -->
+<div id="update-banner" class="update-banner">
+  <div class="update-inner">
+    <span id="update-icon">⏳</span>
+    <span id="update-message">Verificando atualizações...</span>
+    <div id="update-progress-wrap" class="progress-wrap" style="display:none">
+      <div class="progress-bar"><div id="update-progress-fill" class="progress-fill" style="width:0%"></div></div>
+      <span id="update-percent" style="font-size:11px;color:#64748b">0%</span>
+    </div>
+  </div>
+  <div class="update-btns">
+    <button id="btn-download-update" class="btn btn-blue btn-sm" style="display:none">Baixar</button>
+    <button id="btn-install-update" class="btn btn-primary btn-sm" style="display:none">Instalar agora</button>
+    <button id="btn-check-updates" class="btn btn-secondary btn-sm" style="display:none">Verificar</button>
+    <button id="btn-dismiss-banner" class="btn btn-secondary btn-sm">✕</button>
+  </div>
+</div>
+
 <div class="content">
+
   <!-- Dashboard -->
   <div id="dashboard" class="section active">
     <div class="stats-grid">
@@ -93,6 +131,7 @@
     <h2 class="section-title">Atividade Recente</h2>
     <div class="card"><div id="activity-log"><p class="empty-state">Aguardando atividade...</p></div></div>
   </div>
+
   <!-- Impressoras -->
   <div id="printers" class="section">
     <div class="toolbar">
@@ -104,16 +143,17 @@
     </div>
     <div id="printers-list"><p class="empty-state">Carregando impressoras...</p></div>
   </div>
+
   <!-- Jobs -->
   <div id="jobs" class="section">
     <h2 class="section-title">Fila de Impressão</h2>
     <div id="jobs-list"><p class="empty-state">Nenhum job recente</p></div>
   </div>
+
   <!-- Configurações -->
   <div id="settings" class="section">
     <h2 class="section-title">Configurações</h2>
 
-    <!-- Pairing status box -->
     <div id="pairing-box" class="pairing-box unpaired">
       <div class="pairing-status-label">
         <span id="pairing-icon">🔴</span>
@@ -142,7 +182,7 @@
           <input type="number" id="pollingInterval" min="2000" max="60000" step="1000" value="5000">
         </div>
         <div class="btn-row">
-          <button type="button" class="btn btn-primary" id="pair-btn">&#128279; Parear Agora</button>
+          <button type="button" class="btn btn-primary" id="pair-btn">🔗 Parear Agora</button>
           <button type="submit" class="btn btn-secondary" id="save-btn">Salvar</button>
           <button type="button" class="btn btn-danger" id="unpair-btn" style="display:none">Desfazer Pareamento</button>
         </div>
@@ -150,11 +190,28 @@
     </div>
 
     <div class="card">
-      <div style="font-size:12px;color:#64748b;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Conexão</div>
-      <button class="btn btn-secondary" id="test-conn-btn">Testar Conexão</button>
+      <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Conexão &amp; Sincronização</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-secondary" id="test-conn-btn">Testar Conexão</button>
+      </div>
+    </div>
+
+    <!-- Atualizações -->
+    <div class="card">
+      <div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Atualizações</div>
+      <div class="update-status-row">
+        <div>
+          <div style="font-size:13px;font-weight:600">Boomm Printer Desktop</div>
+          <div class="update-status-text">Versão atual: <span id="settings-version">—</span></div>
+          <div id="update-status-msg" class="update-status-text" style="margin-top:4px"></div>
+        </div>
+        <button class="btn btn-secondary" id="settings-check-updates-btn">Verificar Atualizações</button>
+      </div>
     </div>
   </div>
+
 </div>
+
 <div id="alerts-container"></div>
 <script src="renderer.js"></script>
 </body>

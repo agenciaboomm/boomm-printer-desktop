@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.0)'
+        description: 'Version to release (e.g. 0.1.2)'
         required: false
-        default: '0.1.0'
+        default: '0.1.2'
 
 permissions:
   contents: write
@@ -32,14 +32,22 @@ jobs:
 
       - name: Build Windows installer
         run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List dist directory
         shell: pwsh
         run: |
           Write-Host "=== Contents of dist/ ==="
           Get-ChildItem -Path dist -Recurse | Select-Object FullName, Length
+
+      - name: Verify latest.yml was generated
+        shell: pwsh
+        run: |
+          if (-not (Test-Path dist\latest.yml)) {
+            Write-Error "latest.yml not found in dist/! Auto-update will not work."
+            exit 1
+          }
+          Write-Host "latest.yml OK:"
+          Get-Content dist\latest.yml
 
       - name: Generate SHA256
         id: sha256
@@ -64,6 +72,7 @@ jobs:
           name: BoommPrinterSetup
           path: |
             dist/BoommPrinterSetup-*.exe
+            dist/latest.yml
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -75,7 +84,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.0' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.2' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -91,33 +100,31 @@ jobs:
           body: |
             ## Boomm Printer Desktop ${{ steps.tag.outputs.tag }}
 
-            App local Windows para impressão de etiquetas PDF/ZPL via integração com o SaaS Boomm Printer.
+            App local Windows para impressão de etiquetas PDF/ZPL com **atualização automática**.
+
+            ### Novidades nesta versão
+            - Pareamento via **Chave de acesso de impressão** (gerada no SaaS)
+            - Troca automática de `print_access_key` por `device_token`
+            - **Auto-update**: o próprio app verifica e baixa novas versões
+            - Heartbeat a cada 30 segundos
+            - Botão "Desfazer Pareamento"
 
             ### Instalação
+            1. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
+            2. Execute como **Administrador**
+            3. Configure em **Configurações**: URL do SaaS + Chave de acesso → **Parear Agora**
 
-            1. Baixe o arquivo `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe` abaixo
-            2. Execute o instalador como **Administrador**
-            3. Siga as instruções de instalação
-            4. Abra o app e configure em **Configurações**:
-               - URL da API do SaaS Boomm Printer
-               - Chave de API
-               - Nome do computador
-
-            ### Requisitos
-
-            - Windows 10 ou superior (64-bit)
-            - Acesso à internet para comunicação com o SaaS
-            - Visualizador de PDF instalado (Adobe Reader, Foxit, Edge) para impressão de PDFs
+            ### Atualizações futuras
+            O próprio app verifica automaticamente se existe nova versão ao iniciar e oferece download/instalação direto na interface.
 
             ### Checksum SHA256
-
             ```
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
             ```
-
             **Tamanho:** ${{ steps.sha256.outputs.exesize }}
           files: |
             dist/BoommPrinterSetup-*.exe
+            dist/latest.yml
             dist/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

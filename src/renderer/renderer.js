@@ -2,7 +2,7 @@
 const api = window.electronAPI;
 let jobsDone = 0, jobsFailed = 0;
 
-// Nav
+// --- Nav ---
 document.querySelectorAll('.nav-link').forEach((link) => {
   link.addEventListener('click', () => {
     document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
@@ -13,20 +13,27 @@ document.querySelectorAll('.nav-link').forEach((link) => {
   });
 });
 
-// Init
+// --- Init ---
 async function init() {
   const s = await api.getSettings();
   document.getElementById('apiUrl').value = s.apiUrl || '';
   document.getElementById('printAccessKey').value = s.printAccessKey || '';
   document.getElementById('computerName').value = s.computerName || '';
   document.getElementById('pollingInterval').value = s.pollingInterval || 5000;
+  if (s.appVersion) {
+    document.getElementById('app-version').textContent = `v${s.appVersion} Desktop`;
+    document.getElementById('settings-version').textContent = `v${s.appVersion}`;
+  }
   setPairingUI(s.isPaired, s.computerId);
   await loadPrinters();
+
   api.onStatusUpdate(addLog);
   api.onJobUpdate(handleJobUpdate);
   api.onPairingStatus((d) => setPairingUI(d.isPaired, d.computerId));
+  api.onUpdater(handleUpdater);
 }
 
+// --- Pairing ---
 function setPairingUI(isPaired, computerId) {
   const box = document.getElementById('pairing-box');
   const icon = document.getElementById('pairing-icon');
@@ -54,7 +61,95 @@ function setPairingUI(isPaired, computerId) {
   }
 }
 
-// Printers
+// --- Auto-update ---
+const updateBanner = document.getElementById('update-banner');
+const updateIcon = document.getElementById('update-icon');
+const updateMessage = document.getElementById('update-message');
+const updateProgressWrap = document.getElementById('update-progress-wrap');
+const updateProgressFill = document.getElementById('update-progress-fill');
+const updatePercent = document.getElementById('update-percent');
+const btnDownload = document.getElementById('btn-download-update');
+const btnInstall = document.getElementById('btn-install-update');
+const btnCheck = document.getElementById('btn-check-updates');
+const btnDismiss = document.getElementById('btn-dismiss-banner');
+const updateStatusMsg = document.getElementById('update-status-msg');
+
+function handleUpdater(d) {
+  updateStatusMsg.textContent = '';
+  updateProgressWrap.style.display = 'none';
+  btnDownload.style.display = 'none';
+  btnInstall.style.display = 'none';
+  btnCheck.style.display = 'none';
+
+  switch (d.state) {
+    case 'checking':
+      showBanner('default');
+      updateIcon.textContent = '⏳';
+      updateMessage.textContent = 'Verificando atualizações...';
+      updateStatusMsg.textContent = 'Verificando...';
+      break;
+
+    case 'available':
+      showBanner('default');
+      updateIcon.textContent = '⬆️';
+      updateMessage.textContent = `Nova versão ${d.version} disponível!`;
+      btnDownload.style.display = 'inline-block';
+      updateStatusMsg.textContent = `Versão ${d.version} disponível`;
+      break;
+
+    case 'latest':
+      hideBanner();
+      updateStatusMsg.textContent = 'Você já está na versão mais recente.';
+      break;
+
+    case 'downloading':
+      showBanner('default');
+      updateIcon.textContent = '⏬';
+      updateMessage.textContent = `Baixando atualização...`;
+      updateProgressWrap.style.display = 'flex';
+      updateProgressFill.style.width = `${d.percent}%`;
+      updatePercent.textContent = `${d.percent}%`;
+      updateStatusMsg.textContent = `Baixando: ${d.percent}%`;
+      break;
+
+    case 'ready':
+      showBanner('ready');
+      updateIcon.textContent = '✅';
+      updateMessage.textContent = `Versão ${d.version} pronta para instalar.`;
+      btnInstall.style.display = 'inline-block';
+      updateStatusMsg.textContent = `Versão ${d.version} baixada — pronta para instalar.`;
+      break;
+
+    case 'error':
+      showBanner('error');
+      updateIcon.textContent = '⚠️';
+      updateMessage.textContent = `Erro: ${d.message}`;
+      btnCheck.style.display = 'inline-block';
+      updateStatusMsg.textContent = `Erro: ${d.message}`;
+      break;
+  }
+}
+
+function showBanner(type) {
+  updateBanner.className = `update-banner visible${ type === 'ready' ? ' state-ready' : type === 'error' ? ' state-error' : '' }`;
+}
+function hideBanner() {
+  updateBanner.className = 'update-banner';
+}
+
+btnDownload.addEventListener('click', () => api.downloadUpdate());
+btnInstall.addEventListener('click', () => api.installUpdate());
+btnDismiss.addEventListener('click', hideBanner);
+btnCheck.addEventListener('click', () => api.checkForUpdates());
+
+document.getElementById('settings-check-updates-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('settings-check-updates-btn');
+  btn.disabled = true; btn.textContent = 'Verificando...';
+  await api.checkForUpdates();
+  btn.disabled = false; btn.textContent = 'Verificar Atualizações';
+});
+
+// --- Printers ---
 async function loadPrinters() {
   const result = await api.getPrinters();
   renderPrinters(result.printers || []);
@@ -76,7 +171,7 @@ function renderPrinters(list) {
   ).join('');
 }
 
-// Logs
+// --- Logs ---
 function addLog(data) {
   const log = document.getElementById('activity-log');
   const ph = log.querySelector('.empty-state'); if (ph) ph.remove();
@@ -89,7 +184,7 @@ function addLog(data) {
   while (log.children.length > 60) log.removeChild(log.lastChild);
 }
 
-// Jobs
+// --- Jobs ---
 function handleJobUpdate(data) {
   if (data.status === 'completed') document.getElementById('stat-jobs-done').textContent = ++jobsDone;
   else if (data.status === 'failed') document.getElementById('stat-jobs-fail').textContent = ++jobsFailed;
@@ -104,30 +199,22 @@ function handleJobUpdate(data) {
   if (c.children.length > 100) c.removeChild(c.lastChild);
 }
 
-// Pair button
+// --- Settings buttons ---
 document.getElementById('pair-btn').addEventListener('click', async () => {
   const btn = document.getElementById('pair-btn');
-  // Save first
   await api.saveSettings({
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
     pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 5000,
   });
-
   btn.disabled = true; btn.textContent = 'Pareando...';
   const r = await api.pairDevice();
   btn.disabled = false; btn.textContent = '🔗 Parear Agora';
-
-  if (r.success) {
-    setPairingUI(true, r.computer_id);
-    showAlert('Pareado com sucesso!', 'success');
-  } else {
-    showAlert('Erro ao parear: ' + r.error, 'error');
-  }
+  if (r.success) { setPairingUI(true, r.computer_id); showAlert('Pareado com sucesso!', 'success'); }
+  else showAlert('Erro ao parear: ' + r.error, 'error');
 });
 
-// Save (without pairing)
 document.getElementById('settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = document.getElementById('save-btn');
@@ -142,13 +229,11 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
   showAlert('Configurações salvas. Clique em Parear para conectar.', 'info');
 });
 
-// Unpair
 document.getElementById('unpair-btn').addEventListener('click', async () => {
   const r = await api.unpairDevice();
   if (r.success) { setPairingUI(false, null); showAlert('Pareamento desfeito.', 'info'); }
 });
 
-// Test connection
 document.getElementById('test-conn-btn').addEventListener('click', async () => {
   const btn = document.getElementById('test-conn-btn');
   btn.disabled = true; btn.textContent = 'Testando...';
@@ -165,6 +250,7 @@ document.getElementById('sync-printers-btn').addEventListener('click', async () 
   else showAlert('Erro: ' + r.error, 'error');
 });
 
+// --- Helpers ---
 function showAlert(msg, type='info') {
   const c = document.getElementById('alerts-container');
   const el = document.createElement('div');

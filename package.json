@@ -1,6 +1,6 @@
 {
   "name": "boomm-printer-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Boomm Printer Desktop - App local para impressão de etiquetas via SaaS Boomm Printer",
   "main": "src/main.js",
   "private": true,
@@ -12,14 +12,15 @@
   "scripts": {
     "start": "electron .",
     "dev": "cross-env NODE_ENV=development electron .",
-    "build": "electron-builder --win --x64",
+    "build": "electron-builder --win --x64 --publish=never",
     "dist": "electron-builder --win --x64 --publish=never",
     "pack": "electron-builder --dir"
   },
   "dependencies": {
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
@@ -56,6 +57,12 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Boomm Printer"
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "agenciaboomm",
+        "repo": "boomm-printer-desktop"
+      }
+    ]
   }
 }
