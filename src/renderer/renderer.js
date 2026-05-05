@@ -13,6 +13,15 @@ document.querySelectorAll('.nav-link').forEach((link) => {
   });
 });
 
+function switchTab(name) {
+  document.querySelectorAll('.nav-link').forEach((l) => l.classList.remove('active'));
+  document.querySelectorAll('.section').forEach((s) => s.classList.remove('active'));
+  const link = document.querySelector(`[data-section="${name}"]`);
+  if (link) link.classList.add('active');
+  const sec = document.getElementById(name);
+  if (sec) sec.classList.add('active');
+}
+
 // --- Init ---
 async function init() {
   const s = await api.getSettings();
@@ -31,6 +40,17 @@ async function init() {
   api.onJobUpdate(handleJobUpdate);
   api.onPairingStatus((d) => setPairingUI(d.isPaired, d.computerId));
   api.onUpdater(handleUpdater);
+  api.onDeepLinkPair(handleDeepLink);
+}
+
+// --- Deep link ---
+function handleDeepLink(d) {
+  if (d.apiUrl) document.getElementById('apiUrl').value = d.apiUrl;
+  if (d.key) document.getElementById('printAccessKey').value = d.key;
+  setPairingUI(false, null);
+  switchTab('settings');
+  // Auto-trigger pairing after a short delay so the UI settles
+  setTimeout(() => document.getElementById('pair-btn').click(), 300);
 }
 
 // --- Pairing ---
@@ -105,7 +125,7 @@ function handleUpdater(d) {
     case 'downloading':
       showBanner('default');
       updateIcon.textContent = '⏬';
-      updateMessage.textContent = `Baixando atualização...`;
+      updateMessage.textContent = 'Baixando atualização...';
       updateProgressWrap.style.display = 'flex';
       updateProgressFill.style.width = `${d.percent}%`;
       updatePercent.textContent = `${d.percent}%`;

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.2)'
+        description: 'Version to release (e.g. 0.1.3)'
         required: false
-        default: '0.1.2'
+        default: '0.1.3'
 
 permissions:
   contents: write
@@ -84,7 +84,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.2' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.3' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -103,19 +103,22 @@ jobs:
             App local Windows para impressão de etiquetas PDF/ZPL com **atualização automática**.
 
             ### Novidades nesta versão
-            - Pareamento via **Chave de acesso de impressão** (gerada no SaaS)
-            - Troca automática de `print_access_key` por `device_token`
-            - **Auto-update**: o próprio app verifica e baixa novas versões
-            - Heartbeat a cada 30 segundos
-            - Botão "Desfazer Pareamento"
+            - Correção: erro 405 ao Testar Conexão — usa POST heartbeat em vez de GET /ping
+            - Correção: inicialização não bloqueia mais se SaaS estiver indisponível
+            - Deeplink `boommprinter://pair?apiUrl=...&key=...` — abre e pareauutomaticamente
+            - Versão sempre dinâmica (lida do package.json, não hardcoded)
+            - Protocolo `boommprinter://` registrado no Windows pelo instalador
 
             ### Instalação
             1. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
             2. Execute como **Administrador**
             3. Configure em **Configurações**: URL do SaaS + Chave de acesso → **Parear Agora**
 
-            ### Atualizações futuras
-            O próprio app verifica automaticamente se existe nova versão ao iniciar e oferece download/instalação direto na interface.
+            ### Deeplink (integração SaaS)
+            O SaaS pode abrir o app já com URL e chave preenchidas:
+            ```
+            boommprinter://pair?apiUrl=https%3A%2F%2Fseu-app.base44.app&key=CHAVE
+            ```
 
             ### Checksum SHA256
             ```

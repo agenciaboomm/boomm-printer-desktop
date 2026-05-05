@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onJobUpdate: (cb) => ipcRenderer.on('job-update', (_e, d) => cb(d)),
   onPairingStatus: (cb) => ipcRenderer.on('pairing-status', (_e, d) => cb(d)),
   onUpdater: (cb) => ipcRenderer.on('updater', (_e, d) => cb(d)),
+  onDeepLinkPair: (cb) => ipcRenderer.on('deep-link-pair', (_e, d) => cb(d)),
 });
