@@ -7,16 +7,8 @@
   <title>Boomm Printer Desktop</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f172a; color: #e2e8f0;
-      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
-    }
-    .header {
-      background: #1e293b; padding: 10px 20px;
-      display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 1px solid #334155; flex-shrink: 0;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .header { background: #1e293b; padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; flex-shrink: 0; }
     .header h1 { font-size: 17px; font-weight: 700; color: #f97316; }
     .version { font-size: 11px; color: #64748b; margin-left: 8px; }
     .badge { padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
@@ -53,9 +45,12 @@
     .form-group label { display: block; font-size: 11px; font-weight: 600; color: #94a3b8; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px; }
     .form-group input { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 14px; outline: none; transition: border-color .15s; }
     .form-group input:focus { border-color: #f97316; }
+    .form-group .hint { font-size: 11px; color: #475569; margin-top: 4px; }
     .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: background .15s; }
-    .btn-primary { background: #f97316; color: white; } .btn-primary:hover { background: #ea6c0a; } .btn-primary:disabled { background: #7c3a11; color: #9a4a1a; cursor: not-allowed; }
+    .btn-primary { background: #f97316; color: white; } .btn-primary:hover { background: #ea6c0a; }
+    .btn-primary:disabled { background: #7c3a11; color: #9a4a1a; cursor: not-allowed; }
     .btn-secondary { background: #334155; color: #e2e8f0; } .btn-secondary:hover { background: #475569; }
+    .btn-danger { background: #7f1d1d; color: #fca5a5; } .btn-danger:hover { background: #991b1b; }
     .btn-row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
     .empty-state { text-align: center; color: #475569; padding: 32px; font-size: 13px; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
@@ -65,6 +60,11 @@
     .alert-success { background: #16a34a22; border: 1px solid #16a34a; color: #4ade80; }
     .alert-error   { background: #dc262622; border: 1px solid #dc2626; color: #f87171; }
     .alert-info    { background: #0ea5e922; border: 1px solid #0ea5e9; color: #38bdf8; }
+    .pairing-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+    .pairing-box.paired { border-color: #16a34a44; background: #16a34a0a; }
+    .pairing-box.unpaired { border-color: #d9770644; background: #d977060a; }
+    .pairing-status-label { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .pairing-detail { font-size: 11px; color: #64748b; font-family: monospace; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
   </style>
 </head>
@@ -74,7 +74,7 @@
     <h1>🖨️ Boomm Printer</h1>
     <span class="version">v0.1.0 Desktop</span>
   </div>
-  <span id="status-badge" class="badge badge-warning">Aguardando</span>
+  <span id="status-badge" class="badge badge-warning">Não pareado</span>
 </div>
 <nav>
   <span class="nav-link active" data-section="dashboard">Dashboard</span>
@@ -83,6 +83,7 @@
   <span class="nav-link" data-section="settings">Configurações</span>
 </nav>
 <div class="content">
+  <!-- Dashboard -->
   <div id="dashboard" class="section active">
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value" id="stat-printers">—</div><div class="stat-label">Impressoras</div></div>
@@ -92,6 +93,7 @@
     <h2 class="section-title">Atividade Recente</h2>
     <div class="card"><div id="activity-log"><p class="empty-state">Aguardando atividade...</p></div></div>
   </div>
+  <!-- Impressoras -->
   <div id="printers" class="section">
     <div class="toolbar">
       <h2 class="section-title">Impressoras Locais</h2>
@@ -102,23 +104,54 @@
     </div>
     <div id="printers-list"><p class="empty-state">Carregando impressoras...</p></div>
   </div>
+  <!-- Jobs -->
   <div id="jobs" class="section">
     <h2 class="section-title">Fila de Impressão</h2>
     <div id="jobs-list"><p class="empty-state">Nenhum job recente</p></div>
   </div>
+  <!-- Configurações -->
   <div id="settings" class="section">
     <h2 class="section-title">Configurações</h2>
+
+    <!-- Pairing status box -->
+    <div id="pairing-box" class="pairing-box unpaired">
+      <div class="pairing-status-label">
+        <span id="pairing-icon">🔴</span>
+        <span id="pairing-label">Não pareado</span>
+      </div>
+      <div id="pairing-detail" class="pairing-detail">Configure a URL e a Chave de Acesso abaixo, depois clique em Parear.</div>
+    </div>
+
     <div class="card">
       <form id="settings-form">
-        <div class="form-group"><label>URL da API (SaaS Boomm Printer)</label><input type="url" id="apiUrl" placeholder="https://seu-app.base44.com" required></div>
-        <div class="form-group"><label>Chave de API</label><input type="password" id="apiKey" placeholder="Sua chave de API" required></div>
-        <div class="form-group"><label>Nome do Computador</label><input type="text" id="computerName" placeholder="Nome para identificar este computador"></div>
-        <div class="form-group"><label>Intervalo de Polling (ms)</label><input type="number" id="pollingInterval" min="2000" max="60000" step="1000" value="5000"></div>
+        <div class="form-group">
+          <label>URL do SaaS Boomm Printer</label>
+          <input type="url" id="apiUrl" placeholder="https://seu-app.base44.com" required>
+        </div>
+        <div class="form-group">
+          <label>Chave de acesso de impressão</label>
+          <input type="text" id="printAccessKey" placeholder="Cole aqui a chave gerada no SaaS" required autocomplete="off" spellcheck="false">
+          <div class="hint">Gerada em Computadores → Chave de acesso no painel SaaS Boomm Printer.</div>
+        </div>
+        <div class="form-group">
+          <label>Nome do Computador</label>
+          <input type="text" id="computerName" placeholder="Nome para identificar este computador">
+        </div>
+        <div class="form-group">
+          <label>Intervalo de Polling (ms)</label>
+          <input type="number" id="pollingInterval" min="2000" max="60000" step="1000" value="5000">
+        </div>
         <div class="btn-row">
-          <button type="submit" class="btn btn-primary">Salvar Configurações</button>
-          <button type="button" class="btn btn-secondary" id="test-conn-btn">Testar Conexão</button>
+          <button type="button" class="btn btn-primary" id="pair-btn">&#128279; Parear Agora</button>
+          <button type="submit" class="btn btn-secondary" id="save-btn">Salvar</button>
+          <button type="button" class="btn btn-danger" id="unpair-btn" style="display:none">Desfazer Pareamento</button>
         </div>
       </form>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;color:#64748b;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Conexão</div>
+      <button class="btn btn-secondary" id="test-conn-btn">Testar Conexão</button>
     </div>
   </div>
 </div>
