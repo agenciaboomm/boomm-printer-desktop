@@ -11,10 +11,17 @@ const store = new Store();
 
 const { startJobProcessor, stopJobProcessor } = require('./services/job-processor');
 const { getPrinters } = require('./services/printer');
-const { registerComputer, syncPrinters, testConnection } = require('./services/api');
+const { pairWithKey, testConnection, heartbeat, syncPrinters } = require('./services/api');
 
 let mainWindow = null;
 let tray = null;
+let heartbeatTimer = null;
+
+function broadcast(channel, data) {
+  BrowserWindow.getAllWindows().forEach((w) => {
+    if (!w.isDestroyed()) w.webContents.send(channel, data);
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -41,9 +48,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 async function createTray() {
@@ -58,108 +63,122 @@ async function createTray() {
     {
       label: 'Abrir Boomm Printer',
       click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        } else {
-          createWindow();
-        }
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+        else createWindow();
       },
     },
     { type: 'separator' },
-    {
-      label: 'Sair',
-      click: () => {
-        app.isQuiting = true;
-        app.quit();
-      },
-    },
+    { label: 'Sair', click: () => { app.isQuiting = true; app.quit(); } },
   ]);
 
   tray.setToolTip('Boomm Printer Desktop');
   tray.setContextMenu(contextMenu);
   tray.on('double-click', () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    } else {
-      createWindow();
-    }
+    if (mainWindow) { mainWindow.show(); mainWindow.focus(); } else createWindow();
   });
 }
 
-async function initializeApp() {
-  const apiKey = store.get('apiKey');
-  const computerId = store.get('computerId');
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(async () => {
+    try { await heartbeat(); } catch { /* non-fatal */ }
+  }, 30000);
+}
 
-  if (!apiKey) return;
+function stopHeartbeat() {
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+}
+
+async function initializeApp() {
+  const printAccessKey = store.get('printAccessKey');
+  if (!printAccessKey) return;
 
   try {
-    if (!computerId) {
-      await registerComputer();
-    }
-    const printers = await getPrinters();
-    if (printers.length > 0) {
-      await syncPrinters(printers);
-    }
-    startJobProcessor();
+    const deviceToken = store.get('deviceToken');
 
-    if (mainWindow) {
-      mainWindow.webContents.send('status-update', {
-        type: 'success',
-        message: 'Conectado ao SaaS Boomm Printer',
-      });
+    if (deviceToken) {
+      const printers = await getPrinters();
+      await syncPrinters(printers).catch(() => {});
+      startJobProcessor();
+      startHeartbeat();
+      broadcast('status-update', { type: 'success', message: 'Conectado ao SaaS Boomm Printer.' });
+    } else {
+      const printers = await getPrinters();
+      const computerName = store.get('computerName') || os.hostname();
+      await pairWithKey(printAccessKey, computerName, printers);
+      startJobProcessor();
+      startHeartbeat();
+      broadcast('status-update', { type: 'success', message: 'Pareado com sucesso!' });
     }
+
+    broadcast('pairing-status', { isPaired: true });
   } catch (error) {
-    console.error('Initialization error:', error.message);
-    if (mainWindow) {
-      mainWindow.webContents.send('status-update', {
-        type: 'error',
-        message: 'Erro ao inicializar: ' + error.message,
-      });
-    }
+    console.error('Init error:', error.message);
+    broadcast('status-update', { type: 'error', message: 'Erro ao inicializar: ' + error.message });
   }
 }
 
+// IPC
 ipcMain.handle('get-settings', () => ({
   apiUrl: store.get('apiUrl', process.env.SAAS_API_URL || ''),
-  apiKey: store.get('apiKey', ''),
+  printAccessKey: store.get('printAccessKey', ''),
   computerName: store.get('computerName', os.hostname()),
   pollingInterval: store.get('pollingInterval', 5000),
+  isPaired: !!store.get('deviceToken'),
+  computerId: store.get('computerId', ''),
 }));
 
-ipcMain.handle('save-settings', async (_event, settings) => {
+ipcMain.handle('save-settings', async (_e, settings) => {
   store.set('apiUrl', settings.apiUrl);
-  store.set('apiKey', settings.apiKey);
+  store.set('printAccessKey', settings.printAccessKey);
   store.set('computerName', settings.computerName);
   store.set('pollingInterval', Number(settings.pollingInterval) || 5000);
+  store.delete('deviceToken');
   store.delete('computerId');
-
+  store.delete('companyId');
   stopJobProcessor();
+  stopHeartbeat();
+  return { success: true };
+});
+
+ipcMain.handle('pair-device', async () => {
+  const printAccessKey = store.get('printAccessKey');
+  const computerName = store.get('computerName') || os.hostname();
+  if (!printAccessKey) return { success: false, error: 'Chave de acesso não configurada.' };
 
   try {
-    await initializeApp();
-    return { success: true };
+    const printers = await getPrinters();
+    const result = await pairWithKey(printAccessKey, computerName, printers);
+    startJobProcessor();
+    startHeartbeat();
+    return { success: true, ...result };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
+ipcMain.handle('unpair-device', () => {
+  stopJobProcessor();
+  stopHeartbeat();
+  store.delete('deviceToken');
+  store.delete('computerId');
+  store.delete('companyId');
+  return { success: true };
+});
+
 ipcMain.handle('get-printers', async () => {
   try {
-    const printers = await getPrinters();
-    return { success: true, printers };
-  } catch (error) {
-    return { success: false, error: error.message, printers: [] };
+    return { success: true, printers: await getPrinters() };
+  } catch (e) {
+    return { success: false, error: e.message, printers: [] };
   }
 });
 
 ipcMain.handle('test-connection', async () => {
   try {
-    const result = await testConnection();
-    return { success: true, ...result };
-  } catch (error) {
-    return { success: false, error: error.message };
+    return { success: true, ...(await testConnection()) };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -168,8 +187,8 @@ ipcMain.handle('sync-printers', async () => {
     const printers = await getPrinters();
     await syncPrinters(printers);
     return { success: true, count: printers.length };
-  } catch (error) {
-    return { success: false, error: error.message };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -177,7 +196,6 @@ app.whenReady().then(async () => {
   createWindow();
   await createTray();
   await initializeApp();
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -189,4 +207,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   stopJobProcessor();
+  stopHeartbeat();
 });

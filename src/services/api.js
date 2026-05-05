@@ -4,18 +4,14 @@ const Store = require('electron-store');
 
 const store = new Store();
 
-function getClient() {
+function getClient(authToken) {
   const apiUrl = store.get('apiUrl');
-  const apiKey = store.get('apiKey');
-
-  if (!apiUrl || !apiKey) {
-    throw new Error('Configure a URL da API e a Chave de API nas Configurações.');
-  }
+  if (!apiUrl) throw new Error('URL da API não configurada.');
 
   return axios.create({
     baseURL: apiUrl.replace(/\/$/, ''),
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${authToken}`,
       'Content-Type': 'application/json',
       'X-App': 'boomm-printer-desktop',
       'X-Version': '0.1.0',
@@ -24,65 +20,95 @@ function getClient() {
   });
 }
 
+function getPairedClient() {
+  const deviceToken = store.get('deviceToken');
+  if (!deviceToken) {
+    throw new Error('App não pareado. Configure a chave de acesso e clique em Parear.');
+  }
+  return getClient(deviceToken);
+}
+
+async function pairWithKey(printAccessKey, computerName, printers) {
+  const apiUrl = store.get('apiUrl');
+  if (!apiUrl || !printAccessKey) {
+    throw new Error('URL da API e Chave de acesso são obrigatórios.');
+  }
+
+  const client = axios.create({
+    baseURL: apiUrl.replace(/\/$/, ''),
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App': 'boomm-printer-desktop',
+      'X-Version': '0.1.0',
+    },
+    timeout: 15000,
+  });
+
+  const res = await client.post('/api/desktop/pair', {
+    print_access_key: printAccessKey,
+    computer_name: computerName || os.hostname(),
+    hostname: os.hostname(),
+    os: process.platform,
+    arch: process.arch,
+    app_version: '0.1.0',
+    local_printers: printers.map((p) => ({
+      name: p.name,
+      port: p.port || '',
+      is_default: p.isDefault || false,
+    })),
+  });
+
+  const data = res.data;
+  if (data.device_token) store.set('deviceToken', data.device_token);
+  if (data.computer_id) store.set('computerId', data.computer_id);
+  if (data.company_id) store.set('companyId', data.company_id);
+
+  return data;
+}
+
 async function testConnection() {
-  const client = getClient();
+  const client = getPairedClient();
   const res = await client.get('/api/desktop/ping');
   return res.data;
 }
 
-async function registerComputer() {
-  const client = getClient();
-  const computerName = store.get('computerName') || os.hostname();
-
-  const res = await client.post('/api/desktop/computers/register', {
-    name: computerName,
-    hostname: os.hostname(),
-    platform: process.platform,
-    arch: process.arch,
-    version: '0.1.0',
-  });
-
-  if (res.data?.id) {
-    store.set('computerId', res.data.id);
+async function heartbeat() {
+  try {
+    const client = getPairedClient();
+    const res = await client.post('/api/desktop/heartbeat', {
+      status: 'online',
+      timestamp: new Date().toISOString(),
+    });
+    return res.data;
+  } catch {
+    return null;
   }
-
-  return res.data;
 }
 
 async function syncPrinters(printers) {
-  const client = getClient();
-  const computerId = store.get('computerId');
-
-  if (!computerId) {
-    throw new Error('computerId não encontrado. Registre o computador primeiro.');
-  }
-
-  const res = await client.post(`/api/desktop/computers/${computerId}/printers`, {
+  const client = getPairedClient();
+  const res = await client.post('/api/desktop/printers/sync', {
+    computer_id: store.get('computerId'),
     printers: printers.map((p) => ({
       name: p.name,
       port: p.port || '',
       status: p.status || 'ready',
-      isDefault: p.isDefault || false,
+      is_default: p.isDefault || false,
     })),
   });
-
   return res.data;
 }
 
 async function getPendingJobs() {
-  const client = getClient();
-  const computerId = store.get('computerId');
-  if (!computerId) return [];
-
-  const res = await client.get(`/api/desktop/computers/${computerId}/jobs`, {
-    params: { status: 'pending' },
+  const client = getPairedClient();
+  const res = await client.get('/api/desktop/jobs', {
+    params: { status: 'pending', computer_id: store.get('computerId') },
   });
-
   return Array.isArray(res.data) ? res.data : res.data?.jobs || [];
 }
 
 async function updateJobStatus(jobId, status, error = null) {
-  const client = getClient();
+  const client = getPairedClient();
   const payload = { status };
   if (error) payload.error = error;
   const res = await client.patch(`/api/desktop/jobs/${jobId}/status`, payload);
@@ -90,7 +116,7 @@ async function updateJobStatus(jobId, status, error = null) {
 }
 
 async function downloadJobFile(jobId) {
-  const client = getClient();
+  const client = getPairedClient();
   const res = await client.get(`/api/desktop/jobs/${jobId}/file`, {
     responseType: 'arraybuffer',
   });
@@ -101,8 +127,9 @@ async function downloadJobFile(jobId) {
 }
 
 module.exports = {
+  pairWithKey,
   testConnection,
-  registerComputer,
+  heartbeat,
   syncPrinters,
   getPendingJobs,
   updateJobStatus,
