@@ -5,28 +5,36 @@ const Store = require('electron-store');
 const store = new Store();
 const { version: APP_VERSION } = require('../../package.json');
 
-function getClient(authToken) {
+function getBaseUrl() {
   const apiUrl = store.get('apiUrl');
   if (!apiUrl) throw new Error('URL da API não configurada.');
-
-  return axios.create({
-    baseURL: apiUrl.replace(/\/$/, ''),
-    headers: {
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json',
-      'X-App': 'boomm-printer-desktop',
-      'X-Version': APP_VERSION,
-    },
-    timeout: 15000,
-  });
+  return apiUrl.replace(/\/$/, '');
 }
 
-function getPairedClient() {
+function getDeviceToken() {
   const deviceToken = store.get('deviceToken');
   if (!deviceToken) {
     throw new Error('App não pareado. Configure a chave de acesso e clique em Parear.');
   }
-  return getClient(deviceToken);
+  return deviceToken;
+}
+
+async function callDesktopApi(path, body, authToken = null) {
+  const baseUrl = getBaseUrl();
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-App': 'boomm-printer-desktop',
+    'X-Version': APP_VERSION,
+  };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  const res = await axios.post(
+    `${baseUrl}/functions/desktopApi`,
+    { _path: path, ...body },
+    { headers, timeout: 15000 }
+  );
+  return res.data;
 }
 
 async function pairWithKey(printAccessKey, computerName, printers) {
@@ -35,17 +43,7 @@ async function pairWithKey(printAccessKey, computerName, printers) {
     throw new Error('URL da API e Chave de acesso são obrigatórios.');
   }
 
-  const client = axios.create({
-    baseURL: apiUrl.replace(/\/$/, ''),
-    headers: {
-      'Content-Type': 'application/json',
-      'X-App': 'boomm-printer-desktop',
-      'X-Version': APP_VERSION,
-    },
-    timeout: 15000,
-  });
-
-  const res = await client.post('/api/desktop/pair', {
+  const data = await callDesktopApi('/pair', {
     print_access_key: printAccessKey,
     computer_name: computerName || os.hostname(),
     hostname: os.hostname(),
@@ -59,7 +57,6 @@ async function pairWithKey(printAccessKey, computerName, printers) {
     })),
   });
 
-  const data = res.data;
   if (data.device_token) store.set('deviceToken', data.device_token);
   if (data.computer_id) store.set('computerId', data.computer_id);
   if (data.company_id) store.set('companyId', data.company_id);
@@ -73,12 +70,8 @@ async function testConnection() {
     return { connected: false, message: 'App não pareado. Clique em "Parear Agora" primeiro.' };
   }
   try {
-    const client = getPairedClient();
-    const res = await client.post('/api/desktop/heartbeat', {
-      status: 'online',
-      timestamp: new Date().toISOString(),
-    });
-    return { connected: true, ...res.data };
+    const data = await callDesktopApi('/heartbeat', { app_version: APP_VERSION }, deviceToken);
+    return { connected: true, ...data };
   } catch (err) {
     const status = err.response?.status;
     if (status === 401) throw new Error('Token inválido (401). Refaça o pareamento.');
@@ -89,52 +82,55 @@ async function testConnection() {
 
 async function heartbeat() {
   try {
-    const client = getPairedClient();
-    const res = await client.post('/api/desktop/heartbeat', {
-      status: 'online',
-      timestamp: new Date().toISOString(),
-    });
-    return res.data;
+    const deviceToken = getDeviceToken();
+    return await callDesktopApi('/heartbeat', { app_version: APP_VERSION }, deviceToken);
   } catch {
     return null;
   }
 }
 
 async function syncPrinters(printers) {
-  const client = getPairedClient();
-  const res = await client.post('/api/desktop/printers/sync', {
-    computer_id: store.get('computerId'),
+  const deviceToken = getDeviceToken();
+  return await callDesktopApi('/printers/sync', {
     printers: printers.map((p) => ({
       name: p.name,
       port: p.port || '',
       status: p.status || 'ready',
       is_default: p.isDefault || false,
     })),
-  });
-  return res.data;
+  }, deviceToken);
 }
 
 async function getPendingJobs() {
-  const client = getPairedClient();
-  const res = await client.get('/api/desktop/jobs', {
-    params: { status: 'pending', computer_id: store.get('computerId') },
-  });
-  return Array.isArray(res.data) ? res.data : res.data?.jobs || [];
+  const deviceToken = getDeviceToken();
+  const data = await callDesktopApi('/jobs', { status: 'sent' }, deviceToken);
+  return Array.isArray(data) ? data : data?.jobs || [];
 }
 
 async function updateJobStatus(jobId, status, error = null) {
-  const client = getPairedClient();
-  const payload = { status };
-  if (error) payload.error = error;
-  const res = await client.patch(`/api/desktop/jobs/${jobId}/status`, payload);
-  return res.data;
+  const deviceToken = getDeviceToken();
+  const body = { status };
+  if (error) body.error = error;
+  return await callDesktopApi(`/jobs/${jobId}/status`, body, deviceToken);
 }
 
 async function downloadJobFile(jobId) {
-  const client = getPairedClient();
-  const res = await client.get(`/api/desktop/jobs/${jobId}/file`, {
-    responseType: 'arraybuffer',
-  });
+  const baseUrl = getBaseUrl();
+  const deviceToken = getDeviceToken();
+  const res = await axios.post(
+    `${baseUrl}/functions/desktopApi`,
+    { _path: `/jobs/${jobId}/file` },
+    {
+      headers: {
+        Authorization: `Bearer ${deviceToken}`,
+        'Content-Type': 'application/json',
+        'X-App': 'boomm-printer-desktop',
+        'X-Version': APP_VERSION,
+      },
+      responseType: 'arraybuffer',
+      timeout: 30000,
+    }
+  );
   return {
     data: Buffer.from(res.data),
     contentType: res.headers['content-type'] || 'application/pdf',
