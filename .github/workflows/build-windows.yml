@@ -1,0 +1,123 @@
+name: Build Windows Installer
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 0.1.0)'
+        required: false
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Windows installer
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List dist directory
+        shell: pwsh
+        run: |
+          Write-Host "=== Contents of dist/ ==="
+          Get-ChildItem -Path dist -Recurse | Select-Object FullName, Length
+
+      - name: Generate SHA256
+        id: sha256
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\BoommPrinterSetup-*.exe | Select-Object -First 1
+          if ($exe) {
+            $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+            "$hash  $($exe.Name)" | Out-File -FilePath dist\SHA256SUMS.txt -Encoding utf8
+            Write-Host "SHA256: $hash"
+            echo "sha256=$hash" >> $env:GITHUB_OUTPUT
+            echo "exename=$($exe.Name)" >> $env:GITHUB_OUTPUT
+            echo "exesize=$(($exe.Length / 1MB).ToString('F2')) MB" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Error "No .exe found in dist/"
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoommPrinterSetup
+          path: |
+            dist/BoommPrinterSetup-*.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set release tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v${{ github.event.inputs.version || '0.1.0' }}"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+
+      - name: Create or update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Boomm Printer Desktop ${{ steps.tag.outputs.tag }}"
+          draft: false
+          prerelease: false
+          make_latest: true
+          body: |
+            ## Boomm Printer Desktop ${{ steps.tag.outputs.tag }}
+
+            App local Windows para impressão de etiquetas PDF/ZPL via integração com o SaaS Boomm Printer.
+
+            ### Instalação
+
+            1. Baixe o arquivo `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe` abaixo
+            2. Execute o instalador como **Administrador**
+            3. Siga as instruções de instalação
+            4. Abra o app e configure em **Configurações**:
+               - URL da API do SaaS Boomm Printer
+               - Chave de API
+               - Nome do computador
+
+            ### Requisitos
+
+            - Windows 10 ou superior (64-bit)
+            - Acesso à internet para comunicação com o SaaS
+            - Algum visualizador de PDF instalado (Adobe Reader, Foxit, Edge, etc.) para impressão de PDFs
+
+            ### Checksum SHA256
+
+            ```
+            ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
+            ```
+
+            **Tamanho:** ${{ steps.sha256.outputs.exesize }}
+          files: |
+            dist/BoommPrinterSetup-*.exe
+            dist/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
