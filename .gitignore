@@ -6,9 +6,6 @@ dist/
 out/
 release/
 
-# Electron
-.webpack/
-
 # Environment
 .env
 .env.local
@@ -19,7 +16,7 @@ logs/
 *.log
 npm-debug.log*
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -34,6 +31,6 @@ desktop.ini
 .cache/
 .eslintcache
 
-# Temporary files
+# Temp
 *.tmp
 *.temp

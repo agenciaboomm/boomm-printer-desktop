@@ -35,58 +35,25 @@ SaaS Boomm Printer (Base44)
 ## Desenvolvimento
 
 ```bash
-# Clonar o repositório
 git clone https://github.com/agenciaboomm/boomm-printer-desktop.git
 cd boomm-printer-desktop
-
-# Instalar dependências
 npm install
-
-# Copiar e preencher o .env
 cp .env.example .env
-
-# Rodar em modo desenvolvimento
+# Editar .env com URL e chave da API
 npm run dev
 ```
 
-## Gerar Build
+## Build
 
-Veja [BUILD.md](./BUILD.md) para instruções detalhadas de build local e via GitHub Actions.
+Veja [BUILD.md](./BUILD.md) para instruções detalhadas.
 
 ## Publicar Release
 
-Veja [PUBLISHING.md](./PUBLISHING.md) para o fluxo completo de publicação.
+Veja [PUBLISHING.md](./PUBLISHING.md) para o fluxo completo.
 
 ## Testes
 
-Veja [TESTING.md](./TESTING.md) para guia de testes manuais.
-
-## Estrutura do projeto
-
-```
-boomm-printer-desktop/
-├── .github/
-│   └── workflows/
-│       └── build-windows.yml   # CI/CD build + release
-├── build/                       # Recursos de build (ícones, etc.)
-├── src/
-│   ├── main.js                  # Processo principal Electron
-│   ├── preload.js               # Bridge segura main ↔ renderer
-│   ├── services/
-│   │   ├── api.js               # Cliente HTTP para o SaaS
-│   │   ├── printer.js           # Detecção e impressão
-│   │   ├── job-processor.js     # Loop de polling de jobs
-│   │   └── store.js             # Armazenamento local (electron-store)
-│   └── renderer/
-│       ├── index.html           # Interface do usuário
-│       └── renderer.js          # Lógica da UI
-├── .env.example
-├── package.json
-├── README.md
-├── BUILD.md
-├── TESTING.md
-└── PUBLISHING.md
-```
+Veja [TESTING.md](./TESTING.md) para o guia de testes.
 
 ## Licença
 

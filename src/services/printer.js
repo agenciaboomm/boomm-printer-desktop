@@ -64,7 +64,6 @@ async function printPDF(printerName, pdfBuffer) {
     fs.writeFileSync(tmpFile, pdfBuffer);
 
     await new Promise((resolve, reject) => {
-      // Use Shell.Application COM object to print to specific printer
       const psScript = [
         `$file = '${tmpFile.replace(/'/g, "''")}'`,
         `$printer = '${printerName.replace(/'/g, "''")}'`,
@@ -77,7 +76,6 @@ async function printPDF(printerName, pdfBuffer) {
 
       exec(`powershell -NonInteractive -Command "${psScript}"`, { timeout: 30000 }, (err) => {
         if (err) {
-          // Fallback: open file with default viewer and print dialog
           const fallback = `Start-Process -FilePath '${tmpFile.replace(/'/g, "''")}' -Verb print -Wait`;
           exec(`powershell -NonInteractive -Command "${fallback}"`, { timeout: 20000 }, (err2) => {
             if (err2) reject(new Error('Falha ao imprimir PDF: ' + err2.message));
@@ -99,11 +97,7 @@ async function printPDF(printerName, pdfBuffer) {
 
 async function printZPL(printerName, zplContent) {
   const ipMatch = printerName.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-
-  if (ipMatch) {
-    return sendZPLviaTCP(ipMatch[1], 9100, zplContent);
-  }
-
+  if (ipMatch) return sendZPLviaTCP(ipMatch[1], 9100, zplContent);
   return sendZPLviaWindowsRaw(printerName, zplContent);
 }
 
@@ -112,7 +106,6 @@ function sendZPLviaTCP(host, port, content) {
     const client = net.createConnection({ host, port }, () => {
       client.write(content, 'utf8', () => client.end());
     });
-
     client.on('end', () => resolve({ success: true }));
     client.on('error', (err) => reject(err));
     client.setTimeout(10000, () => {
@@ -126,7 +119,6 @@ function sendZPLviaWindowsRaw(printerName, zplContent) {
   return new Promise((resolve, reject) => {
     const tmpFile = path.join(os.tmpdir(), `boomm_zpl_${Date.now()}.prn`);
     fs.writeFileSync(tmpFile, zplContent, 'binary');
-
     exec(`copy /B "${tmpFile}" "\\\\.\\${printerName}"`, { timeout: 15000 }, (err) => {
       try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
       if (err) reject(new Error('Falha ao enviar ZPL RAW: ' + err.message));

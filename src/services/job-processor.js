@@ -45,7 +45,6 @@ async function processJobs() {
     }
   } catch (err) {
     if (!err.message?.includes('Configure')) {
-      console.error('Poll error:', err.message);
       broadcast('status-update', { type: 'error', message: 'Erro ao buscar jobs: ' + err.message });
     }
   } finally {
@@ -67,7 +66,6 @@ function stopJobProcessor() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
-    console.log('Job processor stopped');
   }
 }
 

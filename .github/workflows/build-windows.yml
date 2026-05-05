@@ -107,7 +107,7 @@ jobs:
 
             - Windows 10 ou superior (64-bit)
             - Acesso à internet para comunicação com o SaaS
-            - Algum visualizador de PDF instalado (Adobe Reader, Foxit, Edge, etc.) para impressão de PDFs
+            - Visualizador de PDF instalado (Adobe Reader, Foxit, Edge) para impressão de PDFs
 
             ### Checksum SHA256
 

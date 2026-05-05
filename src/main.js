@@ -121,7 +121,6 @@ async function initializeApp() {
   }
 }
 
-// IPC Handlers
 ipcMain.handle('get-settings', () => ({
   apiUrl: store.get('apiUrl', process.env.SAAS_API_URL || ''),
   apiKey: store.get('apiKey', ''),
