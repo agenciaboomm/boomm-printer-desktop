@@ -27,6 +27,32 @@ jobs:
         with:
           node-version: 'lts/*'
 
+      - name: Sanity check source files
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json | ConvertFrom-Json
+          Write-Host "=== package.json version: $($pkg.version) ==="
+
+          $renderer = Get-Content src\renderer\renderer.js -Raw
+          $html     = Get-Content src\renderer\index.html  -Raw
+          $api      = Get-Content src\services\api.js       -Raw
+
+          $errors = @()
+
+          if ($renderer -notmatch 'Parear Agora')        { $errors += 'renderer.js: missing Parear Agora' }
+          if ($html     -notmatch 'acesso de impress')   { $errors += 'index.html: missing Chave de acesso de impressao' }
+          if ($api      -match    '/api/desktop/ping')   { $errors += 'api.js: still calls deprecated GET /api/desktop/ping' }
+          if ($renderer -match    'v0\.1\.0 Desktop')   { $errors += 'renderer.js: hardcoded v0.1.0 Desktop found' }
+          if ($html     -match    'v0\.1\.0 Desktop')   { $errors += 'index.html: hardcoded v0.1.0 Desktop found' }
+          if ($html     -match    'CHAVE DE API"')       { $errors += 'index.html: old label CHAVE DE API found' }
+
+          if ($errors.Count -gt 0) {
+            Write-Host ""
+            Write-Error ("Source sanity check FAILED:`n" + ($errors -join "`n"))
+            exit 1
+          }
+          Write-Host "All sanity checks passed."
+
       - name: Install dependencies
         run: npm install
 
@@ -111,10 +137,12 @@ jobs:
             - Protocolo `boommprinter://` registrado no Windows pelo instalador
             - Auto-update via `electron-updater` + `latest.yml`
 
-            ### Instalação
-            1. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
-            2. Execute como **Administrador**
-            3. Em **Configurações**: cole a URL do SaaS + Chave de acesso de impressão → **Parear Agora**
+            ### ⚠️ Instalação limpa (IMPORTANTE)
+            Se já tiver uma versão anterior instalada:
+            1. **Desinstale** a versão antiga em Configurações do Windows → Aplicativos
+            2. Baixe `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe`
+            3. Execute como **Administrador**
+            4. Em **Configurações**: cole a URL do SaaS + Chave de acesso de impressão → **Parear Agora**
 
             ### Checksum SHA256
             ```
