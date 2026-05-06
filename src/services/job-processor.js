@@ -1,6 +1,7 @@
 const { BrowserWindow } = require('electron');
-const { getPendingJobs, updateJobStatus, downloadJobFile } = require('./api');
+const { getPendingJobs, updateJobStatus } = require('./api');
 const { printPDF, printZPL } = require('./printer');
+const axios = require('axios');
 
 let pollTimer = null;
 let isProcessing = false;
@@ -11,6 +12,24 @@ function broadcast(channel, data) {
   });
 }
 
+async function downloadUrl(url) {
+  const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+  return {
+    data: Buffer.from(res.data),
+    contentType: res.headers['content-type'] || 'application/pdf',
+  };
+}
+
+async function printDocument(url, contentType, printerName, jobType) {
+  const { data, contentType: ct } = await downloadUrl(url);
+  const resolvedType = contentType || ct || '';
+  if (resolvedType.includes('zpl') || jobType === 'zpl') {
+    await printZPL(printerName, data.toString('utf8'));
+  } else {
+    await printPDF(printerName, data);
+  }
+}
+
 async function processJobs() {
   if (isProcessing) return;
   isProcessing = true;
@@ -19,32 +38,44 @@ async function processJobs() {
     const jobs = await getPendingJobs();
 
     for (const job of jobs) {
-      broadcast('job-update', { id: job.id, status: 'processing', name: job.name || `Job #${job.id}` });
+      const label = job.title || job.name || `Job #${job.id.slice(0, 8)}`;
+      broadcast('job-update', { id: job.id, status: 'processing', name: label });
 
       try {
-        await updateJobStatus(job.id, 'processing');
+        await updateJobStatus(job.id, 'printing');
 
-        const { data, contentType } = await downloadJobFile(job.id);
-        const printerName = job.printer_name || job.printerName || '';
+        const docs = Array.isArray(job.documents) && job.documents.length > 0
+          ? job.documents
+          : job.content_url
+            ? [{ url: job.content_url, format: job.content_type || 'PDF', type: 'label', order: 1 }]
+            : [];
 
-        if (contentType.includes('zpl') || job.type === 'zpl') {
-          await printZPL(printerName, data.toString('utf8'));
-        } else {
-          await printPDF(printerName, data);
+        if (docs.length === 0) {
+          throw new Error('Job sem arquivo para impressão (content_url e documents vazios).');
         }
 
-        await updateJobStatus(job.id, 'completed');
-        broadcast('job-update', { id: job.id, status: 'completed' });
-        broadcast('status-update', { type: 'success', message: `Job #${job.id} impresso com sucesso.` });
+        // sort by order ascending
+        docs.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+        const printerName = job.printer_name || job.printerName || '';
+
+        for (const doc of docs) {
+          if (!doc.url) continue;
+          await printDocument(doc.url, doc.format, printerName, doc.type);
+        }
+
+        await updateJobStatus(job.id, 'printed');
+        broadcast('job-update', { id: job.id, status: 'printed' });
+        broadcast('status-update', { type: 'success', message: `${label} impresso com sucesso.` });
       } catch (err) {
         console.error(`Job ${job.id} failed:`, err.message);
-        await updateJobStatus(job.id, 'failed', err.message).catch(() => {});
+        await updateJobStatus(job.id, 'error', err.message).catch(() => {});
         broadcast('job-update', { id: job.id, status: 'failed', error: err.message });
-        broadcast('status-update', { type: 'error', message: `Job #${job.id} falhou: ${err.message}` });
+        broadcast('status-update', { type: 'error', message: `${label} falhou: ${err.message}` });
       }
     }
   } catch (err) {
-    if (!err.message?.includes('Configure')) {
+    if (!err.message?.includes('Configure') && !err.message?.includes('pareado')) {
       broadcast('status-update', { type: 'error', message: 'Erro ao buscar jobs: ' + err.message });
     }
   } finally {
