@@ -19,6 +19,14 @@ function getDeviceToken() {
   return deviceToken;
 }
 
+// Windows PrinterStatus=0 → 'ready', WMIC fallback → 'unknown'.
+// Normalize both to 'online' so the SaaS always receives a canonical value.
+function normalizePrinterStatus(s) {
+  if (!s || s === 'ready' || s === 'unknown' || s === 'idle') return 'online';
+  if (s === 'offline' || s === 'error') return 'offline';
+  return s;
+}
+
 async function callDesktopApi(path, body, authToken = null) {
   const baseUrl = getBaseUrl();
   const headers = {
@@ -53,6 +61,7 @@ async function pairWithKey(printAccessKey, computerName, printers) {
     local_printers: printers.map((p) => ({
       name: p.name,
       port: p.port || '',
+      status: normalizePrinterStatus(p.status),
       is_default: p.isDefault || false,
     })),
   });
@@ -95,7 +104,7 @@ async function syncPrinters(printers) {
     printers: printers.map((p) => ({
       name: p.name,
       port: p.port || '',
-      status: p.status || 'ready',
+      status: normalizePrinterStatus(p.status),
       is_default: p.isDefault || false,
     })),
   }, deviceToken);
