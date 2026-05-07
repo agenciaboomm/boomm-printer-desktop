@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.8)'
+        description: 'Version to release (e.g. 0.1.9)'
         required: false
-        default: '0.1.8'
+        default: '0.1.9'
 
 permissions:
   contents: write
@@ -41,14 +41,14 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
           if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html     -notmatch 'v0\.1\.8')               { $errors += 'index.html: version marker v0.1.8 not found' }
+          if ($html     -notmatch 'v0\.1\.9')               { $errors += 'index.html: version marker v0.1.9 not found' }
           if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api      -notmatch 'trigger-check-ready')     { $errors += 'api.js: triggerCheckReady not found' }
           if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
           if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
           if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
-          if ($pkg.version -ne '0.1.8')                     { $errors += "package.json version is $($pkg.version), expected 0.1.8" }
+          if ($pkg.version -ne '0.1.9')                     { $errors += "package.json version is $($pkg.version), expected 0.1.9" }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
@@ -114,7 +114,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.8' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.9' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -132,16 +132,17 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.8)
-            - **Fix crítico**: Microsoft Print to PDF agora salva o arquivo diretamente em `Downloads\Boomm Printer\` sem depender do diálogo do Windows
-            - **Fix**: PDF só é marcado como `printed` após confirmar que o arquivo foi criado com tamanho > 0
-            - **Fix**: título do job (ex: `NF 4835 — Ana Sandra Lopes dos Santos`) é usado como nome do arquivo PDF
-            - **Herdado de v0.1.7**: polling de jobs a 2s, trigger-check-ready a 5s, backoff 429
+            ### Novidades nesta versão (v0.1.9)
+            - **Fix**: Microsoft Print to PDF salva com timestamp no nome (`NF 4835 — Cliente_1748123456789.pdf`) — sem sobrescrever arquivos
+            - **Fix**: `fs.promises` (async) evita travamento da UI durante salvamento em disco
+            - **Fix**: caminho exato do PDF aparece na Atividade Recente após salvar
+            - **Fix**: `isCheckingReady` guard evita chamadas paralelas ao check-ready quando o SaaS demora > 5 s
+            - **Herdado de v0.1.8**: salvamento direto em `Downloads\Boomm Printer\` sem diálogo do Windows
 
             ### Como confirmar que esta é a versão certa
             Após instalar, o app deve mostrar exatamente:
-            - Header: **v0.1.8 Desktop**
-            - Configurações → rodapé verde: `build: v0.1.8 | print-to-pdf-disk + title-passthrough`
+            - Header: **v0.1.9 Desktop**
+            - Configurações → rodapé verde: `build: v0.1.9 | async-pdf + timestamp + savedPath-broadcast`
 
             ### Instalação limpa (recomendado)
             1. Feche o app pela bandeja do sistema (botão direito → Sair)

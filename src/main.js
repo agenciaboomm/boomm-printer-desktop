@@ -19,6 +19,7 @@ let tray = null;
 let heartbeatTimer = null;
 let checkReadyTimer = null;
 let checkReadyBackoffTimer = null;
+let isCheckingReady = false;
 let pendingDeepLink = null;
 
 // --- Single instance lock + deep link (Windows) ---
@@ -135,10 +136,10 @@ function stopHeartbeat() {
 function startCheckReady() {
   stopCheckReady();
   checkReadyTimer = setInterval(async () => {
-    if (!net.isOnline()) return;
+    if (isCheckingReady || !net.isOnline()) return;
+    isCheckingReady = true;
     try {
       const result = await triggerCheckReady();
-      // result skipped / recent_check / backoff (body-level) are non-errors
       if (result?.result === 'backoff' && typeof result?.backoff_seconds === 'number') {
         stopCheckReady();
         checkReadyBackoffTimer = setTimeout(startCheckReady, result.backoff_seconds * 1000);
@@ -151,6 +152,8 @@ function startCheckReady() {
         checkReadyBackoffTimer = setTimeout(startCheckReady, backoffSec * 1000);
       }
       // network failures and other errors are non-fatal
+    } finally {
+      isCheckingReady = false;
     }
   }, 5000);
 }
