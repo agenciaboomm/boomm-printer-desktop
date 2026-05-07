@@ -62,20 +62,22 @@ function resolveViaWmic(resolve) {
 // so a normal printto verb call silently discards the output — nothing is saved.
 async function savePDFtoDisk(pdfBuffer, options = {}) {
   const outputDir = path.join(os.homedir(), 'Downloads', 'Boomm Printer');
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
+  await fs.promises.mkdir(outputDir, { recursive: true });
 
-  const rawTitle = (options.title || `Boomm_${Date.now()}`)
+  const timestamp = Date.now();
+  const sanitizedTitle = (options.title || 'Boomm')
+    .replace(/\.pdf$/i, '')
     .replace(/[<>:"/\\|?*\r\n]/g, '-')
     .replace(/\s+/g, ' ')
-    .trim();
-  const fileName = rawTitle.endsWith('.pdf') ? rawTitle : `${rawTitle}.pdf`;
+    .trim()
+    .substring(0, 150);
+
+  const fileName = `${sanitizedTitle}_${timestamp}.pdf`;
   const outputPath = path.join(outputDir, fileName);
 
-  fs.writeFileSync(outputPath, pdfBuffer);
+  await fs.promises.writeFile(outputPath, pdfBuffer);
 
-  const stat = fs.statSync(outputPath);
+  const stat = await fs.promises.stat(outputPath);
   if (!stat || stat.size === 0) {
     throw new Error(`PDF salvo mas arquivo está vazio: ${outputPath}`);
   }
