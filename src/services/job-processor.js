@@ -36,9 +36,9 @@ async function printDocument(url, contentType, printerName, jobType, options = {
   const resolvedType = contentType || ct || '';
   try {
     if (resolvedType.includes('zpl') || jobType === 'zpl') {
-      await printZPL(printerName, data.toString('utf8'));
+      return await printZPL(printerName, data.toString('utf8'));
     } else {
-      await printPDF(printerName, data, options);
+      return await printPDF(printerName, data, options);
     }
   } catch (printErr) {
     throw new Error(`Impressora "${printerName}": ${printErr.message}`);
@@ -83,7 +83,10 @@ async function processJobs() {
 
         for (const doc of docs) {
           if (!doc.url) continue;
-          await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
+          const result = await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
+          if (result?.savedPath) {
+            broadcast('status-update', { type: 'info', message: `PDF salvo em: ${result.savedPath}` });
+          }
         }
 
         await updateJobStatus(job.id, 'printed').catch((e) => {
