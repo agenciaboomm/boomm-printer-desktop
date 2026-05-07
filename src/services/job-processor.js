@@ -30,7 +30,7 @@ async function downloadUrl(url) {
   }
 }
 
-async function printDocument(url, contentType, printerName, jobType) {
+async function printDocument(url, contentType, printerName, jobType, options = {}) {
   if (!printerName) throw new Error('Nenhuma impressora configurada para este job. Defina uma impressora padrão no SaaS.');
   const { data, contentType: ct } = await downloadUrl(url);
   const resolvedType = contentType || ct || '';
@@ -38,7 +38,7 @@ async function printDocument(url, contentType, printerName, jobType) {
     if (resolvedType.includes('zpl') || jobType === 'zpl') {
       await printZPL(printerName, data.toString('utf8'));
     } else {
-      await printPDF(printerName, data);
+      await printPDF(printerName, data, options);
     }
   } catch (printErr) {
     throw new Error(`Impressora "${printerName}": ${printErr.message}`);
@@ -83,7 +83,7 @@ async function processJobs() {
 
         for (const doc of docs) {
           if (!doc.url) continue;
-          await printDocument(doc.url, doc.format, printerName, doc.type);
+          await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
         }
 
         await updateJobStatus(job.id, 'printed').catch((e) => {

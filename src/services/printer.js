@@ -57,7 +57,38 @@ function resolveViaWmic(resolve) {
   });
 }
 
-async function printPDF(printerName, pdfBuffer) {
+// For "Microsoft Print to PDF": bypass the print driver and save directly to disk.
+// The Windows Print to PDF driver suppresses its save dialog in NonInteractive mode,
+// so a normal printto verb call silently discards the output — nothing is saved.
+async function savePDFtoDisk(pdfBuffer, options = {}) {
+  const outputDir = path.join(os.homedir(), 'Downloads', 'Boomm Printer');
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const rawTitle = (options.title || `Boomm_${Date.now()}`)
+    .replace(/[<>:"/\\|?*\r\n]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const fileName = rawTitle.endsWith('.pdf') ? rawTitle : `${rawTitle}.pdf`;
+  const outputPath = path.join(outputDir, fileName);
+
+  fs.writeFileSync(outputPath, pdfBuffer);
+
+  const stat = fs.statSync(outputPath);
+  if (!stat || stat.size === 0) {
+    throw new Error(`PDF salvo mas arquivo está vazio: ${outputPath}`);
+  }
+
+  return { success: true, savedPath: outputPath };
+}
+
+async function printPDF(printerName, pdfBuffer, options = {}) {
+  const normalized = (printerName || '').toLowerCase();
+  if (normalized === 'microsoft print to pdf' || normalized.includes('print to pdf')) {
+    return savePDFtoDisk(pdfBuffer, options);
+  }
+
   const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
 
   try {
