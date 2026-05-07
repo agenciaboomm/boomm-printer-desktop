@@ -128,6 +128,15 @@ async function triggerCheckReady() {
   return await callDesktopApi('/trigger-check-ready', {}, deviceToken);
 }
 
+async function reconcilePackages() {
+  try {
+    const deviceToken = getDeviceToken();
+    return await callDesktopApi('/reconcile-packages', {}, deviceToken);
+  } catch {
+    return null;
+  }
+}
+
 async function downloadJobFile(jobId) {
   const baseUrl = getBaseUrl();
   const deviceToken = getDeviceToken();
@@ -159,5 +168,6 @@ module.exports = {
   getPendingJobs,
   updateJobStatus,
   triggerCheckReady,
+  reconcilePackages,
   downloadJobFile,
 };

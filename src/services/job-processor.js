@@ -84,6 +84,14 @@ async function processJobs() {
         // we MUST get a savedPath back. No file = no success.
         const isPDFToDisk = printerName.toLowerCase().includes('print to pdf');
 
+        // Always broadcast which printer was selected — visible in Atividade Recente.
+        // This is the key diagnostic: if it shows the wrong printer, check the PrintRule.
+        console.log(`[job-processor] Job "${label}": printer_name="${printerName}" isPDFToDisk=${isPDFToDisk}`);
+        broadcast('status-update', {
+          type: 'info',
+          message: `Imprimindo "${label}" | Impressora: "${printerName || 'não definida'}"`,
+        });
+
         for (const doc of docs) {
           if (!doc.url) continue;
           const result = await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
@@ -135,6 +143,20 @@ function startJobProcessor() {
   pollTimer = setInterval(processJobs, interval);
   setTimeout(processJobs, 500);
   console.log(`Job processor started (every ${interval}ms)`);
+
+  // Reconcile PrintPackages stuck as 'printing' from previous sessions.
+  // Runs once 8 s after startup so the first poll has time to complete first.
+  setTimeout(() => {
+    const { reconcilePackages } = require('./api');
+    reconcilePackages().then((r) => {
+      if (r && (r.reconciled > 0 || r.timed_out > 0)) {
+        broadcast('status-update', {
+          type: 'info',
+          message: `Reconciliação: ${r.reconciled} pacotes resolvidos, ${r.timed_out} expirados de ${r.total} presos.`,
+        });
+      }
+    }).catch(() => null);
+  }, 8000);
 }
 
 function stopJobProcessor() {
