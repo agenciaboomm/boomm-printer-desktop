@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.6)'
+        description: 'Version to release (e.g. 0.1.7)'
         required: false
-        default: '0.1.6'
+        default: '0.1.7'
 
 permissions:
   contents: write
@@ -41,13 +41,14 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
           if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html     -notmatch 'v0\.1\.6')               { $errors += 'index.html: version marker v0.1.6 not found' }
+          if ($html     -notmatch 'v0\.1\.7')               { $errors += 'index.html: version marker v0.1.7 not found' }
           if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
+          if ($api      -notmatch 'trigger-check-ready')     { $errors += 'api.js: triggerCheckReady not found' }
           if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
           if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
           if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
-          if ($pkg.version -ne '0.1.6')                     { $errors += "package.json version is $($pkg.version), expected 0.1.6" }
+          if ($pkg.version -ne '0.1.7')                     { $errors += "package.json version is $($pkg.version), expected 0.1.7" }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
@@ -113,7 +114,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.6' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.7' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -131,17 +132,19 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.6)
-            - **Fix crítico**: chamadas de API corrigidas para `/functions/desktopApi`
-            - Pareamento, heartbeat, sync de impressoras e jobs agora funcionam corretamente
-            - Removidas chamadas `GET/PATCH /api/desktop/*` que causavam erro 405
+            ### Novidades nesta versão (v0.1.7)
+            - **Novo**: trigger-check-ready enviado ao SaaS a cada 5 segundos enquanto pareado e online
+            - **Novo**: polling de jobs reduzido para 2 segundos (antes: 5s)
+            - **Novo**: respeita backoff retornado pelo SaaS (429 ou result=backoff)
+            - **Novo**: trigger não dispara quando o computador está offline/reconectando
+            - Mantido: impressão via content_url, status printing/printed/error, heartbeat 30s
 
             ### Como confirmar que esta é a versão certa
             Após instalar, o app deve mostrar exatamente:
-            - Header: **v0.1.6 Desktop**
+            - Header: **v0.1.7 Desktop**
             - Configurações: campo **Chave de acesso de impressão**
             - Botão: **Parear Agora**
-            - Rodapé verde: `build: v0.1.6 | desktopApi`
+            - Rodapé verde: `build: v0.1.7 | desktopApi + trigger-check-ready`
 
             ### Instalação limpa (recomendado)
             1. Feche o app pela bandeja do sistema (botão direito → Sair)
