@@ -80,12 +80,22 @@ async function processJobs() {
         docs.sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const printerName = job.printer_name || job.printerName || '';
+        // Belt-check: if the printer is supposed to be a PDF-to-disk driver,
+        // we MUST get a savedPath back. No file = no success.
+        const isPDFToDisk = printerName.toLowerCase().includes('print to pdf');
 
         for (const doc of docs) {
           if (!doc.url) continue;
           const result = await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
           if (result?.savedPath) {
             broadcast('status-update', { type: 'info', message: `PDF salvo em: ${result.savedPath}` });
+          } else if (isPDFToDisk) {
+            // The name matched the belt-check but printPDF did not route to
+            // savePDFtoDisk (internal name-check mismatch). Fail loudly.
+            throw new Error(
+              `Impressora "${printerName}" deveria salvar em disco mas nenhum arquivo foi gerado. ` +
+              `Verifique se o nome exato no Windows é "Microsoft Print to PDF".`
+            );
           }
         }
 
@@ -102,7 +112,14 @@ async function processJobs() {
       }
     }
   } catch (err) {
-    if (!err.message?.includes('Configure') && !err.message?.includes('pareado')) {
+    const httpStatus = err.response?.status;
+    if (httpStatus === 401) {
+      // Token revogado ou computador re-pareado em outro dispositivo.
+      // Pare o polling para não inundar a Atividade com erros repetidos.
+      stopJobProcessor();
+      broadcast('status-update', { type: 'error', message: 'Sessão expirada (401). Refazer o pareamento em Configurações.' });
+      broadcast('pairing-status', { isPaired: false, expired: true });
+    } else if (!err.message?.includes('Configure') && !err.message?.includes('pareado')) {
       broadcast('status-update', { type: 'error', message: 'Erro ao buscar jobs: ' + err.message });
     }
   } finally {
