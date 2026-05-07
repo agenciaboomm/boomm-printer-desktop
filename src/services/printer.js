@@ -80,15 +80,20 @@ async function savePDFtoDisk(pdfBuffer, options = {}) {
     throw new Error(`PDF salvo mas arquivo está vazio: ${outputPath}`);
   }
 
+  console.log(`[savePDFtoDisk] Arquivo salvo: ${outputPath} (${stat.size} bytes)`);
   return { success: true, savedPath: outputPath };
 }
 
 async function printPDF(printerName, pdfBuffer, options = {}) {
   const normalized = (printerName || '').toLowerCase();
+  console.log(`[printPDF] Impressora: "${printerName}" | normalizado: "${normalized}"`);
+
   if (normalized === 'microsoft print to pdf' || normalized.includes('print to pdf')) {
+    console.log('[printPDF] → Modo: salvar PDF em disco (Microsoft Print to PDF)');
     return savePDFtoDisk(pdfBuffer, options);
   }
 
+  console.log('[printPDF] → Modo: impressão física via PowerShell');
   const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
 
   try {
