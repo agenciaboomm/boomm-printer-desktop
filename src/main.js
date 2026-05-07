@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, net } = require('electron');
 const path = require('path');
 const os = require('os');
 
@@ -12,11 +12,13 @@ const { autoUpdater } = require('electron-updater');
 
 const { startJobProcessor, stopJobProcessor } = require('./services/job-processor');
 const { getPrinters } = require('./services/printer');
-const { pairWithKey, testConnection, heartbeat, syncPrinters } = require('./services/api');
+const { pairWithKey, testConnection, heartbeat, syncPrinters, triggerCheckReady } = require('./services/api');
 
 let mainWindow = null;
 let tray = null;
 let heartbeatTimer = null;
+let checkReadyTimer = null;
+let checkReadyBackoffTimer = null;
 let pendingDeepLink = null;
 
 // --- Single instance lock + deep link (Windows) ---
@@ -41,7 +43,7 @@ function handleDeepLink(url) {
     if (apiUrl) store.set('apiUrl', apiUrl);
     if (key) store.set('printAccessKey', key);
     store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
-    stopJobProcessor(); stopHeartbeat();
+    stopJobProcessor(); stopHeartbeat(); stopCheckReady();
     const payload = { apiUrl, key };
     const hasWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed());
     if (hasWindow) broadcast('deep-link-pair', payload);
@@ -130,6 +132,33 @@ function stopHeartbeat() {
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
 }
 
+function startCheckReady() {
+  stopCheckReady();
+  checkReadyTimer = setInterval(async () => {
+    if (!net.isOnline()) return;
+    try {
+      const result = await triggerCheckReady();
+      // result skipped / recent_check / backoff (body-level) are non-errors
+      if (result?.result === 'backoff' && typeof result?.backoff_seconds === 'number') {
+        stopCheckReady();
+        checkReadyBackoffTimer = setTimeout(startCheckReady, result.backoff_seconds * 1000);
+      }
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429) {
+        const backoffSec = err.response?.data?.backoff_seconds || 30;
+        stopCheckReady();
+        checkReadyBackoffTimer = setTimeout(startCheckReady, backoffSec * 1000);
+      }
+      // network failures and other errors are non-fatal
+    }
+  }, 5000);
+}
+function stopCheckReady() {
+  if (checkReadyBackoffTimer) { clearTimeout(checkReadyBackoffTimer); checkReadyBackoffTimer = null; }
+  if (checkReadyTimer) { clearInterval(checkReadyTimer); checkReadyTimer = null; }
+}
+
 async function initializeApp() {
   // Only start if already paired — never auto-pair at startup
   const deviceToken = store.get('deviceToken');
@@ -137,6 +166,7 @@ async function initializeApp() {
 
   startJobProcessor();
   startHeartbeat();
+  startCheckReady();
   getPrinters().then((p) => syncPrinters(p)).catch(() => {}); // background sync, non-fatal
   broadcast('pairing-status', { isPaired: true, computerId: store.get('computerId') });
   broadcast('status-update', { type: 'success', message: 'Conectado ao SaaS Boomm Printer.' });
@@ -147,7 +177,7 @@ ipcMain.handle('get-settings', () => ({
   apiUrl: store.get('apiUrl', process.env.SAAS_API_URL || ''),
   printAccessKey: store.get('printAccessKey', ''),
   computerName: store.get('computerName', os.hostname()),
-  pollingInterval: store.get('pollingInterval', 5000),
+  pollingInterval: store.get('pollingInterval', 2000),
   isPaired: !!store.get('deviceToken'),
   computerId: store.get('computerId', ''),
   appVersion: app.getVersion(),
@@ -155,9 +185,9 @@ ipcMain.handle('get-settings', () => ({
 
 ipcMain.handle('save-settings', async (_e, s) => {
   store.set('apiUrl', s.apiUrl); store.set('printAccessKey', s.printAccessKey);
-  store.set('computerName', s.computerName); store.set('pollingInterval', Number(s.pollingInterval) || 5000);
+  store.set('computerName', s.computerName); store.set('pollingInterval', Number(s.pollingInterval) || 2000);
   store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
-  stopJobProcessor(); stopHeartbeat();
+  stopJobProcessor(); stopHeartbeat(); stopCheckReady();
   return { success: true };
 });
 
@@ -166,13 +196,13 @@ ipcMain.handle('pair-device', async () => {
   if (!key) return { success: false, error: 'Chave de acesso não configurada.' };
   try {
     const result = await pairWithKey(key, store.get('computerName') || os.hostname(), await getPrinters());
-    startJobProcessor(); startHeartbeat();
+    startJobProcessor(); startHeartbeat(); startCheckReady();
     return { success: true, ...result };
   } catch (e) { return { success: false, error: e.message }; }
 });
 
 ipcMain.handle('unpair-device', () => {
-  stopJobProcessor(); stopHeartbeat();
+  stopJobProcessor(); stopHeartbeat(); stopCheckReady();
   store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
   return { success: true };
 });
@@ -225,4 +255,4 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => { if (process.platform === 'darwin') app.quit(); });
-app.on('before-quit', () => { stopJobProcessor(); stopHeartbeat(); });
+app.on('before-quit', () => { stopJobProcessor(); stopHeartbeat(); stopCheckReady(); });

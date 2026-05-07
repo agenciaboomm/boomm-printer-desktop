@@ -111,9 +111,9 @@ function startJobProcessor() {
   stopJobProcessor();
   const Store = require('electron-store');
   const store = new Store();
-  const interval = Math.max(Number(store.get('pollingInterval', 5000)), 3000);
+  const interval = Math.max(Number(store.get('pollingInterval', 2000)), 2000);
   pollTimer = setInterval(processJobs, interval);
-  setTimeout(processJobs, 2000);
+  setTimeout(processJobs, 500);
   console.log(`Job processor started (every ${interval}ms)`);
 }
 

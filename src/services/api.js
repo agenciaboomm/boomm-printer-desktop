@@ -123,6 +123,11 @@ async function updateJobStatus(jobId, status, error = null) {
   return await callDesktopApi(`/jobs/${jobId}/status`, body, deviceToken);
 }
 
+async function triggerCheckReady() {
+  const deviceToken = getDeviceToken();
+  return await callDesktopApi('/trigger-check-ready', {}, deviceToken);
+}
+
 async function downloadJobFile(jobId) {
   const baseUrl = getBaseUrl();
   const deviceToken = getDeviceToken();
@@ -153,5 +158,6 @@ module.exports = {
   syncPrinters,
   getPendingJobs,
   updateJobStatus,
+  triggerCheckReady,
   downloadJobFile,
 };
