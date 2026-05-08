@@ -28,7 +28,8 @@ async function init() {
   document.getElementById('apiUrl').value = s.apiUrl || '';
   document.getElementById('printAccessKey').value = s.printAccessKey || '';
   document.getElementById('computerName').value = s.computerName || '';
-  document.getElementById('pollingInterval').value = s.pollingInterval || 5000;
+  // Default alinhado com main.js (2000ms). Evita salvar 5000ms acidentalmente.
+  document.getElementById('pollingInterval').value = s.pollingInterval || 2000;
   if (s.appVersion) {
     document.getElementById('app-version').textContent = `v${s.appVersion} Desktop`;
     document.getElementById('settings-version').textContent = `v${s.appVersion}`;
@@ -206,7 +207,8 @@ function addLog(data) {
 
 // --- Jobs ---
 function handleJobUpdate(data) {
-  if (data.status === 'completed') document.getElementById('stat-jobs-done').textContent = ++jobsDone;
+  // job-processor broadcasts 'printed' (not 'completed') on success
+  if (data.status === 'printed') document.getElementById('stat-jobs-done').textContent = ++jobsDone;
   else if (data.status === 'failed') document.getElementById('stat-jobs-fail').textContent = ++jobsFailed;
   const ex = document.getElementById(`job-${data.id}`);
   if (ex) { ex.className = `job-item status-${data.status}`; ex.querySelector('.job-status').textContent = data.status; return; }
@@ -226,7 +228,7 @@ document.getElementById('pair-btn').addEventListener('click', async () => {
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 5000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 2000,
   });
   btn.disabled = true; btn.textContent = 'Pareando...';
   const r = await api.pairDevice();
@@ -243,7 +245,7 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 5000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 2000,
   });
   btn.disabled = false; btn.textContent = 'Salvar';
   showAlert('Configurações salvas. Clique em Parear para conectar.', 'info');
