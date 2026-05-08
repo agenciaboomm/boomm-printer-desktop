@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.10)'
+        description: 'Version to release (e.g. 0.1.11)'
         required: false
-        default: '0.1.10'
+        default: '0.1.11'
 
 permissions:
   contents: write
@@ -41,14 +41,14 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
           if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html     -notmatch 'v0\.1\.10')             { $errors += 'index.html: version marker v0.1.10 not found' }
+          if ($html     -notmatch 'v0\.1\.11')             { $errors += 'index.html: version marker v0.1.11 not found' }
           if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api      -notmatch 'trigger-check-ready')     { $errors += 'api.js: triggerCheckReady not found' }
           if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
           if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
           if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
-          if ($pkg.version -ne '0.1.10')                    { $errors += "package.json version is $($pkg.version), expected 0.1.10" }
+          if ($pkg.version -ne '0.1.11')                    { $errors += "package.json version is $($pkg.version), expected 0.1.11" }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
@@ -114,7 +114,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.10' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.11' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -132,17 +132,17 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.10)
-            - **Novo**: DANFE renderizado localmente via Electron — `doc.view` (HTML público) é convertido para PDF real pelo próprio app, sem serviço externo
-            - **Novo**: Detecção automática de URL HTML (`erp.tiny.com.br/doc.view`) antes do download — sem tentativa de salvar HTML como PDF
-            - **Novo**: Fallback por conteúdo — se arquivo baixado não começar com `%PDF`, também aciona renderização via Electron
-            - **Novo**: Logs na Atividade Recente: `DANFE HTML detectado`, `PDF DANFE validado (%PDF OK)`, `PDF salvo em: ...`
-            - **Herdado de v0.1.9**: Etiqueta S3 PDF direto continua inalterada; Microsoft Print to PDF salva em `Downloads\Boomm Printer\`
+            ### Novidades nesta versão (v0.1.11)
+            - **Fix**: Removido diálogo nativo do Windows ao processar DANFE com "Microsoft Print to PDF"
+            - **Fix**: Preload script neutraliza `window.print()` na página DANFE (`doc.view`) antes que o JS da página execute — sem diálogo de impressão
+            - **Fix**: `executeJavaScript` também neutraliza `window.print` após o carregamento (dupla proteção)
+            - **Log**: Atividade Recente exibe "Microsoft Print to PDF detectado: salvando em disco sem abrir diálogo"
+            - **Herdado de v0.1.10**: DANFE renderizado via Electron BrowserWindow; etiqueta S3 inalterada
 
             ### Como confirmar que esta é a versão certa
             Após instalar, o app deve mostrar exatamente:
-            - Header: **v0.1.10 Desktop**
-            - Configurações → rodapé verde: `build: v0.1.10 | danfe-html-render`
+            - Header: **v0.1.11 Desktop**
+            - Configurações → rodapé verde: `build: v0.1.11 | no-print-dialog`
 
             ### Instalação limpa (recomendado)
             1. Feche o app pela bandeja do sistema (botão direito → Sair)

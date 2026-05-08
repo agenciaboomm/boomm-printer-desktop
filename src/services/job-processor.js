@@ -42,10 +42,15 @@ function isHtmlViewerUrl(url) {
 async function printDocument(url, contentType, printerName, jobType, options = {}) {
   if (!printerName) throw new Error('Nenhuma impressora configurada para este job. Defina uma impressora padrão no SaaS.');
 
+  const isPdfToDisk = (printerName || '').toLowerCase().includes('print to pdf');
+
   // If the URL is an HTML viewer (e.g. Tiny doc.view DANFE), render it via
   // Electron's headless BrowserWindow instead of downloading as raw bytes.
   if (isHtmlViewerUrl(url)) {
     broadcast('status-update', { type: 'info', message: 'DANFE HTML detectado: renderizando via Electron...' });
+    if (isPdfToDisk) {
+      broadcast('status-update', { type: 'info', message: 'Microsoft Print to PDF detectado: salvando em disco sem abrir diálogo de impressão.' });
+    }
     const pdfBuffer = await renderHtmlToPdf(url, options);
     if (!pdfBuffer || pdfBuffer.length < 4 || pdfBuffer.slice(0, 4).toString('ascii') !== '%PDF') {
       throw new Error('DANFE renderizado não é um PDF válido.');
@@ -60,6 +65,10 @@ async function printDocument(url, contentType, printerName, jobType, options = {
 
   const { data, contentType: ct } = await downloadUrl(url);
   const resolvedType = contentType || ct || '';
+
+  if (isPdfToDisk) {
+    broadcast('status-update', { type: 'info', message: 'Microsoft Print to PDF detectado: salvando em disco sem abrir diálogo de impressão.' });
+  }
 
   // Fallback: if downloaded content is not a PDF, try HTML rendering
   if (!resolvedType.includes('pdf') && (data.length < 4 || data.slice(0, 4).toString('ascii') !== '%PDF')) {

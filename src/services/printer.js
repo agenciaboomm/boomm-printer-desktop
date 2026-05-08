@@ -92,7 +92,7 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
   console.log(`[printPDF] Impressora: "${printerName}" | normalizado: "${normalized}"`);
 
   if (normalized === 'microsoft print to pdf' || normalized.includes('print to pdf')) {
-    console.log('[printPDF] → Modo: salvar PDF em disco (Microsoft Print to PDF)');
+    console.log('[printPDF] → Modo: salvar PDF em disco (Microsoft Print to PDF) — sem diálogo nativo');
     return savePDFtoDisk(pdfBuffer, options);
   }
 
@@ -135,8 +135,15 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
 }
 
 // Renders a public HTML URL to PDF using Electron's headless BrowserWindow.
-// Used for pages like Tiny's doc.view DANFE viewer that are not direct PDF downloads.
+// A preload script overrides window.print() before page JS runs, preventing
+// the DANFE viewer from triggering the native Windows print dialog.
 async function renderHtmlToPdf(url, options = {}) {
+  // Write a minimal preload that silences window.print before any page JS runs
+  const preloadPath = path.join(os.tmpdir(), `boomm_noprint_${Date.now()}.js`);
+  try {
+    fs.writeFileSync(preloadPath, 'try { window.print = function(){}; } catch(e) {}');
+  } catch { /* continue without preload if write fails */ }
+
   return new Promise((resolve, reject) => {
     let win = null;
     let settled = false;
@@ -148,6 +155,7 @@ async function renderHtmlToPdf(url, options = {}) {
       if (win && !win.isDestroyed()) {
         try { win.destroy(); } catch { /* ignore */ }
       }
+      try { fs.unlinkSync(preloadPath); } catch { /* ignore */ }
       fn(val);
     };
 
@@ -161,13 +169,19 @@ async function renderHtmlToPdf(url, options = {}) {
         height: 1200,
         show: false,
         webPreferences: {
+          preload: preloadPath,
           nodeIntegration: false,
-          contextIsolation: true,
+          // contextIsolation: false allows the preload to override window.print
+          // in the page's own JS context, preventing native print dialogs
+          contextIsolation: false,
           javascript: true,
         },
       });
 
       win.webContents.on('did-finish-load', () => {
+        // Belt-and-suspenders: override window.print in main world after load too
+        win.webContents.executeJavaScript('window.print = function(){};').catch(() => {});
+
         // Wait 2s for any JS-rendered content before capturing
         setTimeout(async () => {
           try {
