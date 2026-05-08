@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.11)'
+        description: 'Version to release (e.g. 0.1.12)'
         required: false
-        default: '0.1.11'
+        default: '0.1.12'
 
 permissions:
   contents: write
@@ -27,6 +27,19 @@ jobs:
         with:
           node-version: 'lts/*'
 
+      - name: Download SumatraPDF portable
+        shell: pwsh
+        run: |
+          $null = New-Item -ItemType Directory -Force -Path build\extraResources
+          Invoke-WebRequest -Uri 'https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.exe' `
+            -OutFile 'build\extraResources\SumatraPDF.exe'
+          $size = (Get-Item 'build\extraResources\SumatraPDF.exe').Length
+          Write-Host "SumatraPDF.exe downloaded: $size bytes"
+          if ($size -lt 1MB) {
+            Write-Error "SumatraPDF download parece inválido (< 1 MB)"
+            exit 1
+          }
+
       - name: Sanity check source files
         shell: pwsh
         run: |
@@ -36,19 +49,23 @@ jobs:
           $renderer = Get-Content src\renderer\renderer.js -Raw
           $html     = Get-Content src\renderer\index.html  -Raw
           $api      = Get-Content src\services\api.js       -Raw
+          $printer  = Get-Content src\services\printer.js   -Raw
 
           $errors = @()
 
           if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
           if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html     -notmatch 'v0\.1\.11')             { $errors += 'index.html: version marker v0.1.11 not found' }
+          if ($html     -notmatch 'v0\.1\.12')             { $errors += 'index.html: version marker v0.1.12 not found' }
           if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api      -notmatch 'trigger-check-ready')     { $errors += 'api.js: triggerCheckReady not found' }
           if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
           if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
           if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
-          if ($pkg.version -ne '0.1.11')                    { $errors += "package.json version is $($pkg.version), expected 0.1.11" }
+          if ($pkg.version -ne '0.1.12')                    { $errors += "package.json version is $($pkg.version), expected 0.1.12" }
+          if ($printer  -notmatch 'SumatraPDF')              { $errors += 'printer.js: SumatraPDF reference not found' }
+          if ($printer  -notmatch 'getSumatraPdfPath')       { $errors += 'printer.js: getSumatraPdfPath not found' }
+          if (-not (Test-Path 'build\extraResources\SumatraPDF.exe')) { $errors += 'SumatraPDF.exe not found in build/extraResources' }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
@@ -114,7 +131,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.11' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.12' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -132,17 +149,18 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.11)
-            - **Fix**: Removido diálogo nativo do Windows ao processar DANFE com "Microsoft Print to PDF"
-            - **Fix**: Preload script neutraliza `window.print()` na página DANFE (`doc.view`) antes que o JS da página execute — sem diálogo de impressão
-            - **Fix**: `executeJavaScript` também neutraliza `window.print` após o carregamento (dupla proteção)
-            - **Log**: Atividade Recente exibe "Microsoft Print to PDF detectado: salvando em disco sem abrir diálogo"
-            - **Herdado de v0.1.10**: DANFE renderizado via Electron BrowserWindow; etiqueta S3 inalterada
+            ### Novidades nesta versão (v0.1.12)
+            - **Fix**: Impressão física via SumatraPDF CLI — abandona Shell.InvokeVerbEx que retornava sucesso falso
+            - **Melhoria**: `SumatraPDF.exe -print-to "Impressora" -silent` entrega o job diretamente ao spooler do Windows
+            - **Melhoria**: Exit code 0 = confirmação real de entrega ao spooler; qualquer outro código = erro com mensagem clara
+            - **Melhoria**: SumatraPDF 3.5.2 bundled no instalador via `extraResources` — não requer instalação separada
+            - **Mantido**: Caminho Microsoft Print to PDF → salvar em disco (`Downloads\Boomm Printer\`) inalterado
+            - **Herdado de v0.1.11**: DANFE renderizado via Electron BrowserWindow; preload neutraliza `window.print()`
 
             ### Como confirmar que esta é a versão certa
             Após instalar, o app deve mostrar exatamente:
-            - Header: **v0.1.11 Desktop**
-            - Configurações → rodapé verde: `build: v0.1.11 | no-print-dialog`
+            - Header: **v0.1.12 Desktop**
+            - Configurações → rodapé verde: `build: v0.1.12 | sumatra-physical-print`
 
             ### Instalação limpa (recomendado)
             1. Feche o app pela bandeja do sistema (botão direito → Sair)

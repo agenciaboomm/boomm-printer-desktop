@@ -1,5 +1,5 @@
 const { BrowserWindow } = require('electron');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
@@ -58,6 +58,17 @@ function resolveViaWmic(resolve) {
   });
 }
 
+// Returns path to SumatraPDF.exe: checks packaged resources first, then dev tree.
+function getSumatraPdfPath() {
+  if (process.resourcesPath) {
+    const packed = path.join(process.resourcesPath, 'SumatraPDF.exe');
+    if (fs.existsSync(packed)) return packed;
+  }
+  const dev = path.join(__dirname, '..', '..', 'build', 'extraResources', 'SumatraPDF.exe');
+  if (fs.existsSync(dev)) return dev;
+  return null;
+}
+
 // For "Microsoft Print to PDF": bypass the print driver and save directly to disk.
 // The Windows Print to PDF driver suppresses its save dialog in NonInteractive mode,
 // so a normal printto verb call silently discards the output — nothing is saved.
@@ -96,33 +107,43 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
     return savePDFtoDisk(pdfBuffer, options);
   }
 
-  console.log('[printPDF] → Modo: impressão física via PowerShell');
-  const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
+  console.log('[printPDF] → Modo: impressão física via SumatraPDF CLI');
 
+  const sumatraPath = getSumatraPdfPath();
+  if (!sumatraPath) {
+    throw new Error('SumatraPDF.exe não encontrado. Reinstale o aplicativo Boomm Printer.');
+  }
+  console.log(`[printPDF] SumatraPDF encontrado: ${sumatraPath}`);
+
+  const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
   try {
     fs.writeFileSync(tmpFile, pdfBuffer);
+    console.log(`[printPDF] Enviando arquivo para "${printerName}"`);
 
     await new Promise((resolve, reject) => {
-      const psScript = [
-        `$file = '${tmpFile.replace(/'/g, "''")}'`,
-        `$printer = '${printerName.replace(/'/g, "''")}'`,
-        `$shell = New-Object -ComObject Shell.Application`,
-        `$dir = $shell.Namespace([System.IO.Path]::GetDirectoryName($file))`,
-        `$item = $dir.ParseName([System.IO.Path]::GetFileName($file))`,
-        `$item.InvokeVerbEx('printto', $printer)`,
-        `Start-Sleep -Seconds 4`,
-      ].join('; ');
+      const copies = Math.max(1, options.copies || 1);
+      const args = [
+        '-print-to', printerName,
+        '-silent',
+        '-print-settings', `${copies}x`,
+        tmpFile,
+      ];
 
-      exec(`powershell -NonInteractive -Command "${psScript}"`, { timeout: 30000 }, (err) => {
-        if (err) {
-          const fallback = `Start-Process -FilePath '${tmpFile.replace(/'/g, "''")}' -Verb print -Wait`;
-          exec(`powershell -NonInteractive -Command "${fallback}"`, { timeout: 20000 }, (err2) => {
-            if (err2) reject(new Error('Falha ao imprimir PDF: ' + err2.message));
-            else resolve();
-          });
-        } else {
+      console.log(`[printPDF] SumatraPDF args: ${JSON.stringify(args)}`);
+      const child = execFile(sumatraPath, args, { timeout: 30000 });
+
+      child.on('close', (code) => {
+        console.log(`[printPDF] Comando SumatraPDF finalizado com exit code ${code}`);
+        if (code === 0) {
           resolve();
+        } else {
+          reject(new Error(`SumatraPDF falhou com exit code ${code} ao imprimir em "${printerName}"`))
         }
+      });
+
+      child.on('error', (err) => {
+        console.error(`[printPDF] Erro ao executar SumatraPDF: ${err.message}`);
+        reject(new Error(`Erro ao executar SumatraPDF: ${err.message}`));
       });
     });
 
