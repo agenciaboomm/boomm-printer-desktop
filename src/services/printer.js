@@ -1,3 +1,4 @@
+const { BrowserWindow } = require('electron');
 const { exec } = require('child_process');
 const net = require('net');
 const fs = require('fs');
@@ -133,6 +134,70 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
   }
 }
 
+// Renders a public HTML URL to PDF using Electron's headless BrowserWindow.
+// Used for pages like Tiny's doc.view DANFE viewer that are not direct PDF downloads.
+async function renderHtmlToPdf(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    let win = null;
+    let settled = false;
+
+    const settle = (fn, val) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (win && !win.isDestroyed()) {
+        try { win.destroy(); } catch { /* ignore */ }
+      }
+      fn(val);
+    };
+
+    const timer = setTimeout(() => {
+      settle(reject, new Error(`Timeout (35s) ao renderizar DANFE: ${url.slice(0, 80)}`));
+    }, 35000);
+
+    try {
+      win = new BrowserWindow({
+        width: 900,
+        height: 1200,
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          javascript: true,
+        },
+      });
+
+      win.webContents.on('did-finish-load', () => {
+        // Wait 2s for any JS-rendered content before capturing
+        setTimeout(async () => {
+          try {
+            const pdfData = await win.webContents.printToPDF({
+              landscape: false,
+              pageSize: 'A4',
+              printBackground: true,
+              margins: { marginType: 'printableArea' },
+            });
+            console.log(`[renderHtmlToPdf] PDF gerado: ${pdfData.length} bytes`);
+            settle(resolve, Buffer.from(pdfData));
+          } catch (e) {
+            settle(reject, new Error(`Erro ao gerar PDF do DANFE: ${e.message}`));
+          }
+        }, 2000);
+      });
+
+      win.webContents.on('did-fail-load', (_e, code, desc) => {
+        settle(reject, new Error(`Falha ao carregar DANFE (${code}): ${desc}`));
+      });
+
+      win.loadURL(url).catch((e) => {
+        settle(reject, new Error(`Erro ao carregar URL DANFE: ${e.message}`));
+      });
+    } catch (e) {
+      settle(reject, new Error(`Erro ao criar janela de renderização: ${e.message}`));
+    }
+  });
+}
+
 async function printZPL(printerName, zplContent) {
   const ipMatch = printerName.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
   if (ipMatch) return sendZPLviaTCP(ipMatch[1], 9100, zplContent);
@@ -165,4 +230,4 @@ function sendZPLviaWindowsRaw(printerName, zplContent) {
   });
 }
 
-module.exports = { getPrinters, printPDF, printZPL };
+module.exports = { getPrinters, printPDF, printZPL, renderHtmlToPdf };

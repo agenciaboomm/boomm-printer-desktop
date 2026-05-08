@@ -1,6 +1,6 @@
 const { BrowserWindow } = require('electron');
 const { getPendingJobs, updateJobStatus } = require('./api');
-const { printPDF, printZPL } = require('./printer');
+const { printPDF, printZPL, renderHtmlToPdf } = require('./printer');
 const axios = require('axios');
 
 let pollTimer = null;
@@ -30,10 +30,51 @@ async function downloadUrl(url) {
   }
 }
 
+function isHtmlViewerUrl(url) {
+  try {
+    const u = new URL(url);
+    return u.hostname.includes('erp.tiny.com.br') && u.pathname.includes('doc.view');
+  } catch {
+    return false;
+  }
+}
+
 async function printDocument(url, contentType, printerName, jobType, options = {}) {
   if (!printerName) throw new Error('Nenhuma impressora configurada para este job. Defina uma impressora padrão no SaaS.');
+
+  // If the URL is an HTML viewer (e.g. Tiny doc.view DANFE), render it via
+  // Electron's headless BrowserWindow instead of downloading as raw bytes.
+  if (isHtmlViewerUrl(url)) {
+    console.log(`[printDocument] URL detectada como visualizador HTML: ${url.slice(0, 80)}`);
+    const pdfBuffer = await renderHtmlToPdf(url, options);
+    if (!pdfBuffer || pdfBuffer.length < 4 || pdfBuffer.slice(0, 4).toString('ascii') !== '%PDF') {
+      throw new Error('DANFE renderizado não é um PDF válido.');
+    }
+    console.log(`[printDocument] PDF renderizado com sucesso (${pdfBuffer.length} bytes). Enviando para impressora.`);
+    try {
+      return await printPDF(printerName, pdfBuffer, options);
+    } catch (printErr) {
+      throw new Error(`Impressora "${printerName}": ${printErr.message}`);
+    }
+  }
+
   const { data, contentType: ct } = await downloadUrl(url);
   const resolvedType = contentType || ct || '';
+
+  // Fallback: if downloaded content is not a PDF, try HTML rendering
+  if (!resolvedType.includes('pdf') && (data.length < 4 || data.slice(0, 4).toString('ascii') !== '%PDF')) {
+    console.log(`[printDocument] Conteúdo baixado não é PDF (${resolvedType}). Tentando renderização HTML.`);
+    const pdfBuffer = await renderHtmlToPdf(url, options);
+    if (!pdfBuffer || pdfBuffer.length < 4 || pdfBuffer.slice(0, 4).toString('ascii') !== '%PDF') {
+      throw new Error(`URL retornou HTML e não foi possível renderizar como PDF: ${url.slice(0, 80)}`);
+    }
+    try {
+      return await printPDF(printerName, pdfBuffer, options);
+    } catch (printErr) {
+      throw new Error(`Impressora "${printerName}": ${printErr.message}`);
+    }
+  }
+
   try {
     if (resolvedType.includes('zpl') || jobType === 'zpl') {
       return await printZPL(printerName, data.toString('utf8'));
@@ -80,12 +121,30 @@ async function processJobs() {
         docs.sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const printerName = job.printer_name || job.printerName || '';
+        // Belt-check: if the printer is supposed to be a PDF-to-disk driver,
+        // we MUST get a savedPath back. No file = no success.
+        const isPDFToDisk = printerName.toLowerCase().includes('print to pdf');
+
+        // Always broadcast which printer was selected — visible in Atividade Recente.
+        // This is the key diagnostic: if it shows the wrong printer, check the PrintRule.
+        console.log(`[job-processor] Job "${label}": printer_name="${printerName}" isPDFToDisk=${isPDFToDisk}`);
+        broadcast('status-update', {
+          type: 'info',
+          message: `Imprimindo "${label}" | Impressora: "${printerName || 'não definida'}"`,
+        });
 
         for (const doc of docs) {
           if (!doc.url) continue;
           const result = await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
           if (result?.savedPath) {
             broadcast('status-update', { type: 'info', message: `PDF salvo em: ${result.savedPath}` });
+          } else if (isPDFToDisk) {
+            // The name matched the belt-check but printPDF did not route to
+            // savePDFtoDisk (internal name-check mismatch). Fail loudly.
+            throw new Error(
+              `Impressora "${printerName}" deveria salvar em disco mas nenhum arquivo foi gerado. ` +
+              `Verifique se o nome exato no Windows é "Microsoft Print to PDF".`
+            );
           }
         }
 
@@ -102,7 +161,14 @@ async function processJobs() {
       }
     }
   } catch (err) {
-    if (!err.message?.includes('Configure') && !err.message?.includes('pareado')) {
+    const httpStatus = err.response?.status;
+    if (httpStatus === 401) {
+      // Token revogado ou computador re-pareado em outro dispositivo.
+      // Pare o polling para não inundar a Atividade com erros repetidos.
+      stopJobProcessor();
+      broadcast('status-update', { type: 'error', message: 'Sessão expirada (401). Refazer o pareamento em Configurações.' });
+      broadcast('pairing-status', { isPaired: false, expired: true });
+    } else if (!err.message?.includes('Configure') && !err.message?.includes('pareado')) {
       broadcast('status-update', { type: 'error', message: 'Erro ao buscar jobs: ' + err.message });
     }
   } finally {
@@ -118,6 +184,20 @@ function startJobProcessor() {
   pollTimer = setInterval(processJobs, interval);
   setTimeout(processJobs, 500);
   console.log(`Job processor started (every ${interval}ms)`);
+
+  // Reconcile PrintPackages stuck as 'printing' from previous sessions.
+  // Runs once 8 s after startup so the first poll has time to complete first.
+  setTimeout(() => {
+    const { reconcilePackages } = require('./api');
+    reconcilePackages().then((r) => {
+      if (r && (r.reconciled > 0 || r.timed_out > 0)) {
+        broadcast('status-update', {
+          type: 'info',
+          message: `Reconciliação: ${r.reconciled} pacotes resolvidos, ${r.timed_out} expirados de ${r.total} presos.`,
+        });
+      }
+    }).catch(() => null);
+  }, 8000);
 }
 
 function stopJobProcessor() {
