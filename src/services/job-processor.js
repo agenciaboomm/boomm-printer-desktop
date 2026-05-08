@@ -45,12 +45,12 @@ async function printDocument(url, contentType, printerName, jobType, options = {
   // If the URL is an HTML viewer (e.g. Tiny doc.view DANFE), render it via
   // Electron's headless BrowserWindow instead of downloading as raw bytes.
   if (isHtmlViewerUrl(url)) {
-    console.log(`[printDocument] URL detectada como visualizador HTML: ${url.slice(0, 80)}`);
+    broadcast('status-update', { type: 'info', message: 'DANFE HTML detectado: renderizando via Electron...' });
     const pdfBuffer = await renderHtmlToPdf(url, options);
     if (!pdfBuffer || pdfBuffer.length < 4 || pdfBuffer.slice(0, 4).toString('ascii') !== '%PDF') {
       throw new Error('DANFE renderizado não é um PDF válido.');
     }
-    console.log(`[printDocument] PDF renderizado com sucesso (${pdfBuffer.length} bytes). Enviando para impressora.`);
+    broadcast('status-update', { type: 'info', message: `PDF DANFE validado (%PDF OK, ${pdfBuffer.length} bytes). Enviando para impressora...` });
     try {
       return await printPDF(printerName, pdfBuffer, options);
     } catch (printErr) {
@@ -63,11 +63,12 @@ async function printDocument(url, contentType, printerName, jobType, options = {
 
   // Fallback: if downloaded content is not a PDF, try HTML rendering
   if (!resolvedType.includes('pdf') && (data.length < 4 || data.slice(0, 4).toString('ascii') !== '%PDF')) {
-    console.log(`[printDocument] Conteúdo baixado não é PDF (${resolvedType}). Tentando renderização HTML.`);
+    broadcast('status-update', { type: 'info', message: `Conteúdo não é PDF (${resolvedType}): tentando renderização HTML...` });
     const pdfBuffer = await renderHtmlToPdf(url, options);
     if (!pdfBuffer || pdfBuffer.length < 4 || pdfBuffer.slice(0, 4).toString('ascii') !== '%PDF') {
       throw new Error(`URL retornou HTML e não foi possível renderizar como PDF: ${url.slice(0, 80)}`);
     }
+    broadcast('status-update', { type: 'info', message: `PDF gerado via Electron (%PDF OK, ${pdfBuffer.length} bytes).` });
     try {
       return await printPDF(printerName, pdfBuffer, options);
     } catch (printErr) {
