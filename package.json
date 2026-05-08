@@ -40,12 +40,6 @@
       "src/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "build/extraResources/SumatraPDF.exe",
-        "to": "SumatraPDF.exe"
-      }
-    ],
     "protocols": [
       {
         "name": "Boomm Printer",

@@ -27,19 +27,6 @@ jobs:
         with:
           node-version: 'lts/*'
 
-      - name: Download SumatraPDF portable
-        shell: pwsh
-        run: |
-          $null = New-Item -ItemType Directory -Force -Path build\extraResources
-          Invoke-WebRequest -Uri 'https://www.sumatrapdfreader.org/dl/rel/3.5.2/SumatraPDF-3.5.2-64.exe' `
-            -OutFile 'build\extraResources\SumatraPDF.exe'
-          $size = (Get-Item 'build\extraResources\SumatraPDF.exe').Length
-          Write-Host "SumatraPDF.exe downloaded: $size bytes"
-          if ($size -lt 1MB) {
-            Write-Error "SumatraPDF download parece inválido (< 1 MB)"
-            exit 1
-          }
-
       - name: Sanity check source files
         shell: pwsh
         run: |
@@ -63,9 +50,9 @@ jobs:
           if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
           if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
           if ($pkg.version -ne '0.1.12')                    { $errors += "package.json version is $($pkg.version), expected 0.1.12" }
-          if ($printer  -notmatch 'SumatraPDF')              { $errors += 'printer.js: SumatraPDF reference not found' }
-          if ($printer  -notmatch 'getSumatraPdfPath')       { $errors += 'printer.js: getSumatraPdfPath not found' }
-          if (-not (Test-Path 'build\extraResources\SumatraPDF.exe')) { $errors += 'SumatraPDF.exe not found in build/extraResources' }
+          if ($printer  -notmatch 'webContents.print')       { $errors += 'printer.js: webContents.print not found' }
+          if ($printer  -notmatch 'silent.*true')            { $errors += 'printer.js: silent: true not found' }
+          if ($printer  -match    'SumatraPDF')              { $errors += 'printer.js: SumatraPDF reference still present' }
 
           if ($errors.Count -gt 0) {
             Write-Host ""
@@ -150,17 +137,18 @@ jobs:
             App local Windows para impressão de etiquetas PDF/ZPL.
 
             ### Novidades nesta versão (v0.1.12)
-            - **Fix**: Impressão física via SumatraPDF CLI — abandona Shell.InvokeVerbEx que retornava sucesso falso
-            - **Melhoria**: `SumatraPDF.exe -print-to "Impressora" -silent` entrega o job diretamente ao spooler do Windows
-            - **Melhoria**: Exit code 0 = confirmação real de entrega ao spooler; qualquer outro código = erro com mensagem clara
-            - **Melhoria**: SumatraPDF 3.5.2 bundled no instalador via `extraResources` — não requer instalação separada
+            - **Fix**: Impressão física via Electron `webContents.print({ silent: true, deviceName })` — sem binário externo
+            - **Fix**: Abandona Shell.InvokeVerbEx que retornava sucesso falso sem entrar no spooler
+            - **Melhoria**: PDF carregado em BrowserWindow oculta; Chromium nativo envia direto ao driver Windows
+            - **Melhoria**: Callback `success=true/false` confirma entrega real ao spooler
+            - **Diagnóstico**: `Get-PrintJob` loga jobs na fila após envio (não bloqueia)
             - **Mantido**: Caminho Microsoft Print to PDF → salvar em disco (`Downloads\Boomm Printer\`) inalterado
-            - **Herdado de v0.1.11**: DANFE renderizado via Electron BrowserWindow; preload neutraliza `window.print()`
+            - **Herdado de v0.1.11**: DANFE renderizada via Electron BrowserWindow; preload neutraliza `window.print()`
 
             ### Como confirmar que esta é a versão certa
             Após instalar, o app deve mostrar exatamente:
             - Header: **v0.1.12 Desktop**
-            - Configurações → rodapé verde: `build: v0.1.12 | sumatra-physical-print`
+            - Configurações → rodapé verde: `build: v0.1.12 | native-electron-physical-print`
 
             ### Instalação limpa (recomendado)
             1. Feche o app pela bandeja do sistema (botão direito → Sair)
