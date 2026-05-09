@@ -195,18 +195,21 @@ function startJobProcessor() {
   setTimeout(processJobs, 500);
   console.log(`Job processor started (every ${interval}ms)`);
 
-  // Reconcile PrintPackages stuck as 'printing' from previous sessions.
-  // Runs once 8 s after startup so the first poll has time to complete first.
+  // Reconciliation placeholder — reconcilePackages is not yet implemented in api.js.
+  // Guard prevents TypeError crash if the export is missing.
   setTimeout(() => {
-    const { reconcilePackages } = require('./api');
-    reconcilePackages().then((r) => {
-      if (r && (r.reconciled > 0 || r.timed_out > 0)) {
-        broadcast('status-update', {
-          type: 'info',
-          message: `Reconciliação: ${r.reconciled} pacotes resolvidos, ${r.timed_out} expirados de ${r.total} presos.`,
-        });
-      }
-    }).catch(() => null);
+    try {
+      const api = require('./api');
+      if (typeof api.reconcilePackages !== 'function') return;
+      api.reconcilePackages().then((r) => {
+        if (r && (r.reconciled > 0 || r.timed_out > 0)) {
+          broadcast('status-update', {
+            type: 'info',
+            message: `Reconciliação: ${r.reconciled} pacotes resolvidos, ${r.timed_out} expirados de ${r.total} presos.`,
+          });
+        }
+      }).catch(() => null);
+    } catch { /* reconcilePackages não implementado — ignorar */ }
   }, 8000);
 }
 
