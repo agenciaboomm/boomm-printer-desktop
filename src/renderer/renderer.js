@@ -28,8 +28,8 @@ async function init() {
   document.getElementById('apiUrl').value = s.apiUrl || '';
   document.getElementById('printAccessKey').value = s.printAccessKey || '';
   document.getElementById('computerName').value = s.computerName || '';
-  // Default alinhado com main.js (2000ms). Evita salvar 5000ms acidentalmente.
-  document.getElementById('pollingInterval').value = s.pollingInterval || 2000;
+  // Default alinhado com main.js (10000ms). Evita salvar intervalo muito curto acidentalmente.
+  document.getElementById('pollingInterval').value = s.pollingInterval || 10000;
   if (s.appVersion) {
     document.getElementById('app-version').textContent = `v${s.appVersion} Desktop`;
     document.getElementById('settings-version').textContent = `v${s.appVersion}`;
@@ -228,7 +228,7 @@ document.getElementById('pair-btn').addEventListener('click', async () => {
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 2000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 10000,
   });
   btn.disabled = true; btn.textContent = 'Pareando...';
   const r = await api.pairDevice();
@@ -245,14 +245,14 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 2000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 10000,
   });
   btn.disabled = false; btn.textContent = 'Salvar';
   showAlert('Configurações salvas. Clique em Parear para conectar.', 'info');
 });
 
 document.getElementById('unpair-btn').addEventListener('click', async () => {
-  const r = await api.unpairDevice();
+  const r = await api.unpairDevice();  
   if (r.success) { setPairingUI(false, null); showAlert('Pareamento desfeito.', 'info'); }
 });
 
