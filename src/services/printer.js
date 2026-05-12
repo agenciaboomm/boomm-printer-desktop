@@ -1,4 +1,5 @@
 const { exec } = require('child_process');
+const { BrowserWindow } = require('electron');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
@@ -57,10 +58,56 @@ function resolveViaWmic(resolve) {
   });
 }
 
+function isPdfBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 5) return false;
+  return buffer.slice(0, 5).toString('ascii') === '%PDF-';
+}
+
+async function renderHtmlUrlToPdf(url, options = {}) {
+  console.log(`[renderHtmlUrlToPdf] Renderizando HTML como PDF: ${url}`);
+
+  const win = new BrowserWindow({
+    show: false,
+    width: 1240,
+    height: 1754,
+    webPreferences: {
+      sandbox: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  try {
+    await win.loadURL(url);
+    await new Promise((resolve) => setTimeout(resolve, options.renderDelayMs || 1800));
+
+    const pdfBuffer = await win.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      marginsType: 0,
+      pageSize: 'A4',
+    });
+
+    if (!isPdfBuffer(pdfBuffer)) {
+      throw new Error('Falha ao renderizar HTML: printToPDF não retornou um PDF válido.');
+    }
+
+    console.log(`[renderHtmlUrlToPdf] PDF gerado com sucesso (${pdfBuffer.length} bytes)`);
+    return pdfBuffer;
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
+}
+
 // For "Microsoft Print to PDF": bypass the print driver and save directly to disk.
 // The Windows Print to PDF driver suppresses its save dialog in NonInteractive mode,
 // so a normal printto verb call silently discards the output — nothing is saved.
 async function savePDFtoDisk(pdfBuffer, options = {}) {
+  if (!isPdfBuffer(pdfBuffer)) {
+    const preview = Buffer.isBuffer(pdfBuffer) ? pdfBuffer.slice(0, 80).toString('utf8') : '';
+    throw new Error(`Conteúdo recebido não é PDF válido (%PDF ausente). Preview: ${preview.replace(/\s+/g, ' ').slice(0, 80)}`);
+  }
+
   const outputDir = path.join(os.homedir(), 'Downloads', 'Boomm Printer');
   await fs.promises.mkdir(outputDir, { recursive: true });
 
@@ -89,6 +136,10 @@ async function savePDFtoDisk(pdfBuffer, options = {}) {
 async function printPDF(printerName, pdfBuffer, options = {}) {
   const normalized = (printerName || '').toLowerCase();
   console.log(`[printPDF] Impressora: "${printerName}" | normalizado: "${normalized}"`);
+
+  if (!isPdfBuffer(pdfBuffer)) {
+    throw new Error('Tentativa de imprimir/salvar conteúdo que não é PDF. O HTML deve ser renderizado antes.');
+  }
 
   if (normalized === 'microsoft print to pdf' || normalized.includes('print to pdf')) {
     console.log('[printPDF] → Modo: salvar PDF em disco (Microsoft Print to PDF)');
@@ -165,4 +216,4 @@ function sendZPLviaWindowsRaw(printerName, zplContent) {
   });
 }
 
-module.exports = { getPrinters, printPDF, printZPL };
+module.exports = { getPrinters, printPDF, printZPL, renderHtmlUrlToPdf, isPdfBuffer };
