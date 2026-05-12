@@ -56,8 +56,6 @@ async function processJobs() {
       const label = job.title || job.name || `Job #${job.id.slice(0, 8)}`;
       broadcast('job-update', { id: job.id, status: 'processing', name: label });
 
-      // Mark as printing first. If the SaaS is unreachable, skip this job
-      // and try again next poll — don't mark as error just because of a network blip.
       try {
         await updateJobStatus(job.id, 'printing');
       } catch (statusErr) {
@@ -80,12 +78,8 @@ async function processJobs() {
         docs.sort((a, b) => (a.order || 0) - (b.order || 0));
 
         const printerName = job.printer_name || job.printerName || '';
-        // Belt-check: if the printer is supposed to be a PDF-to-disk driver,
-        // we MUST get a savedPath back. No file = no success.
         const isPDFToDisk = printerName.toLowerCase().includes('print to pdf');
 
-        // Always broadcast which printer was selected — visible in Atividade Recente.
-        // This is the key diagnostic: if it shows the wrong printer, check the PrintRule.
         console.log(`[job-processor] Job "${label}": printer_name="${printerName}" isPDFToDisk=${isPDFToDisk}`);
         broadcast('status-update', {
           type: 'info',
@@ -98,8 +92,6 @@ async function processJobs() {
           if (result?.savedPath) {
             broadcast('status-update', { type: 'info', message: `PDF salvo em: ${result.savedPath}` });
           } else if (isPDFToDisk) {
-            // The name matched the belt-check but printPDF did not route to
-            // savePDFtoDisk (internal name-check mismatch). Fail loudly.
             throw new Error(
               `Impressora "${printerName}" deveria salvar em disco mas nenhum arquivo foi gerado. ` +
               `Verifique se o nome exato no Windows é "Microsoft Print to PDF".`
@@ -122,8 +114,6 @@ async function processJobs() {
   } catch (err) {
     const httpStatus = err.response?.status;
     if (httpStatus === 401) {
-      // Token revogado ou computador re-pareado em outro dispositivo.
-      // Pare o polling para não inundar a Atividade com erros repetidos.
       stopJobProcessor();
       broadcast('status-update', { type: 'error', message: 'Sessão expirada (401). Refazer o pareamento em Configurações.' });
       broadcast('pairing-status', { isPaired: false, expired: true });
@@ -139,16 +129,15 @@ function startJobProcessor() {
   stopJobProcessor();
   const Store = require('electron-store');
   const store = new Store();
-  const interval = Math.max(Number(store.get('pollingInterval', 2000)), 2000);
+  const interval = Math.max(Number(store.get('pollingInterval', 10000)), 10000);
   pollTimer = setInterval(processJobs, interval);
-  setTimeout(processJobs, 500);
+  setTimeout(processJobs, 1000);
   console.log(`Job processor started (every ${interval}ms)`);
 
-  // Reconcile PrintPackages stuck as 'printing' from previous sessions.
-  // Runs once 8 s after startup so the first poll has time to complete first.
   setTimeout(() => {
-    const { reconcilePackages } = require('./api');
-    reconcilePackages().then((r) => {
+    const api = require('./api');
+    if (typeof api.reconcilePackages !== 'function') return;
+    api.reconcilePackages().then((r) => {
       if (r && (r.reconciled > 0 || r.timed_out > 0)) {
         broadcast('status-update', {
           type: 'info',
