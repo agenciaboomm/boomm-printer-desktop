@@ -28,7 +28,7 @@ async function init() {
   document.getElementById('apiUrl').value = s.apiUrl || '';
   document.getElementById('printAccessKey').value = s.printAccessKey || '';
   document.getElementById('computerName').value = s.computerName || '';
-  document.getElementById('pollingInterval').value = s.pollingInterval || 5000;
+  document.getElementById('pollingInterval').value = s.pollingInterval || 10000;
   if (s.appVersion) {
     document.getElementById('app-version').textContent = `v${s.appVersion} Desktop`;
     document.getElementById('settings-version').textContent = `v${s.appVersion}`;
@@ -49,7 +49,6 @@ function handleDeepLink(d) {
   if (d.key) document.getElementById('printAccessKey').value = d.key;
   setPairingUI(false, null);
   switchTab('settings');
-  // Auto-trigger pairing after a short delay so the UI settles
   setTimeout(() => document.getElementById('pair-btn').click(), 300);
 }
 
@@ -108,7 +107,6 @@ function handleUpdater(d) {
       updateMessage.textContent = 'Verificando atualizações...';
       updateStatusMsg.textContent = 'Verificando...';
       break;
-
     case 'available':
       showBanner('default');
       updateIcon.textContent = '⬆️';
@@ -116,12 +114,10 @@ function handleUpdater(d) {
       btnDownload.style.display = 'inline-block';
       updateStatusMsg.textContent = `Versão ${d.version} disponível`;
       break;
-
     case 'latest':
       hideBanner();
       updateStatusMsg.textContent = 'Você já está na versão mais recente.';
       break;
-
     case 'downloading':
       showBanner('default');
       updateIcon.textContent = '⏬';
@@ -131,7 +127,6 @@ function handleUpdater(d) {
       updatePercent.textContent = `${d.percent}%`;
       updateStatusMsg.textContent = `Baixando: ${d.percent}%`;
       break;
-
     case 'ready':
       showBanner('ready');
       updateIcon.textContent = '✅';
@@ -139,7 +134,6 @@ function handleUpdater(d) {
       btnInstall.style.display = 'inline-block';
       updateStatusMsg.textContent = `Versão ${d.version} baixada — pronta para instalar.`;
       break;
-
     case 'error':
       showBanner('error');
       updateIcon.textContent = '⚠️';
@@ -153,9 +147,7 @@ function handleUpdater(d) {
 function showBanner(type) {
   updateBanner.className = `update-banner visible${ type === 'ready' ? ' state-ready' : type === 'error' ? ' state-error' : '' }`;
 }
-function hideBanner() {
-  updateBanner.className = 'update-banner';
-}
+function hideBanner() { updateBanner.className = 'update-banner'; }
 
 btnDownload.addEventListener('click', () => api.downloadUpdate());
 btnInstall.addEventListener('click', () => api.installUpdate());
@@ -206,7 +198,7 @@ function addLog(data) {
 
 // --- Jobs ---
 function handleJobUpdate(data) {
-  if (data.status === 'completed') document.getElementById('stat-jobs-done').textContent = ++jobsDone;
+  if (data.status === 'printed') document.getElementById('stat-jobs-done').textContent = ++jobsDone;
   else if (data.status === 'failed') document.getElementById('stat-jobs-fail').textContent = ++jobsFailed;
   const ex = document.getElementById(`job-${data.id}`);
   if (ex) { ex.className = `job-item status-${data.status}`; ex.querySelector('.job-status').textContent = data.status; return; }
@@ -226,7 +218,7 @@ document.getElementById('pair-btn').addEventListener('click', async () => {
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 5000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 10000,
   });
   btn.disabled = true; btn.textContent = 'Pareando...';
   const r = await api.pairDevice();
@@ -243,7 +235,7 @@ document.getElementById('settings-form').addEventListener('submit', async (e) =>
     apiUrl: document.getElementById('apiUrl').value.trim(),
     printAccessKey: document.getElementById('printAccessKey').value.trim(),
     computerName: document.getElementById('computerName').value.trim(),
-    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 5000,
+    pollingInterval: parseInt(document.getElementById('pollingInterval').value, 10) || 10000,
   });
   btn.disabled = false; btn.textContent = 'Salvar';
   showAlert('Configurações salvas. Clique em Parear para conectar.', 'info');
@@ -259,8 +251,18 @@ document.getElementById('test-conn-btn').addEventListener('click', async () => {
   btn.disabled = true; btn.textContent = 'Testando...';
   const r = await api.testConnection();
   btn.disabled = false; btn.textContent = 'Testar Conexão';
-  if (r.success) showAlert('Conexão OK!', 'success');
-  else showAlert('Falha: ' + r.error, 'error');
+  if (r.success) {
+    const debug = [
+      `computer_id=${r.computer_id || 'n/a'}`,
+      `sent=${r.last_seen_at_sent || 'n/a'}`,
+      `persisted=${r.last_seen_at_persisted || r.last_seen_at || 'n/a'}`,
+      `status=${r.status_persisted || r.status || 'n/a'}`,
+      `app=${r.app_version_persisted || r.app_version || 'n/a'}`,
+      `mismatch=${String(!!r.persisted_mismatch)}`,
+    ].join(' | ');
+    showAlert('Conexão OK!', 'success');
+    addLog({ type: r.persisted_mismatch ? 'error' : 'info', message: `Heartbeat: ${debug}` });
+  } else showAlert('Falha: ' + r.error, 'error');
 });
 
 document.getElementById('refresh-printers-btn').addEventListener('click', loadPrinters);
@@ -279,7 +281,7 @@ function showAlert(msg, type='info') {
 }
 
 function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');
 }
 
 init();
