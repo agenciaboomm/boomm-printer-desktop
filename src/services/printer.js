@@ -74,10 +74,13 @@ async function renderHtmlUrlToPdf(url, options = {}) {
       sandbox: true,
       nodeIntegration: false,
       contextIsolation: true,
+      javascript: false,
     },
   });
 
   try {
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
     await win.loadURL(url);
     await new Promise((resolve) => setTimeout(resolve, options.renderDelayMs || 1800));
 
