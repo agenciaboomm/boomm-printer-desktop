@@ -22,7 +22,6 @@ let checkReadyBackoffTimer = null;
 let isCheckingReady = false;
 let pendingDeepLink = null;
 
-// --- Single instance lock + deep link (Windows) ---
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -52,30 +51,15 @@ function handleDeepLink(url) {
   } catch {}
 }
 
-// --- Auto-updater config ---
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.on('checking-for-update', () => broadcast('updater', { state: 'checking' }));
+autoUpdater.on('update-available', (info) => broadcast('updater', { state: 'available', version: info.version }));
+autoUpdater.on('update-not-available', () => broadcast('updater', { state: 'latest' }));
+autoUpdater.on('download-progress', (p) => broadcast('updater', { state: 'downloading', percent: Math.round(p.percent) }));
+autoUpdater.on('update-downloaded', (info) => broadcast('updater', { state: 'ready', version: info.version }));
+autoUpdater.on('error', (err) => broadcast('updater', { state: 'error', message: err.message }));
 
-autoUpdater.on('checking-for-update', () =>
-  broadcast('updater', { state: 'checking' })
-);
-autoUpdater.on('update-available', (info) =>
-  broadcast('updater', { state: 'available', version: info.version })
-);
-autoUpdater.on('update-not-available', () =>
-  broadcast('updater', { state: 'latest' })
-);
-autoUpdater.on('download-progress', (p) =>
-  broadcast('updater', { state: 'downloading', percent: Math.round(p.percent) })
-);
-autoUpdater.on('update-downloaded', (info) =>
-  broadcast('updater', { state: 'ready', version: info.version })
-);
-autoUpdater.on('error', (err) =>
-  broadcast('updater', { state: 'error', message: err.message })
-);
-
-// --- Helpers ---
 function broadcast(channel, data) {
   BrowserWindow.getAllWindows().forEach((w) => {
     if (!w.isDestroyed()) w.webContents.send(channel, data);
@@ -127,8 +111,10 @@ async function createTray() {
 
 function startHeartbeat() {
   stopHeartbeat();
-  heartbeat().catch(() => {});
-  heartbeatTimer = setInterval(async () => { try { await heartbeat(); } catch { /* non-fatal */ } }, 60000);
+  heartbeat().then((r) => {
+    broadcast('status-update', { type: 'info', message: `Heartbeat inicial: ${r?.last_seen_at_persisted || r?.last_seen_at_sent || 'OK'}` });
+  }).catch(() => {});
+  heartbeatTimer = setInterval(async () => { try { await heartbeat(); } catch { } }, 60000);
 }
 function stopHeartbeat() {
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
@@ -153,7 +139,6 @@ function startCheckReady() {
         stopCheckReady();
         checkReadyBackoffTimer = setTimeout(startCheckReady, backoffSec * 1000);
       }
-      // network failures and other errors are non-fatal
     } finally {
       isCheckingReady = false;
     }
@@ -165,35 +150,56 @@ function stopCheckReady() {
 }
 
 async function initializeApp() {
-  // Only start if already paired — never auto-pair at startup
   const deviceToken = store.get('deviceToken');
   if (!deviceToken) return;
-
   startJobProcessor();
   startHeartbeat();
   startCheckReady();
-  getPrinters().then((p) => syncPrinters(p)).catch(() => {}); // background sync, non-fatal
+  getPrinters().then((p) => syncPrinters(p)).catch(() => {});
   broadcast('pairing-status', { isPaired: true, computerId: store.get('computerId') });
   broadcast('status-update', { type: 'success', message: 'Conectado ao SaaS Boomm Printer.' });
 }
 
-// --- IPC: Settings ---
 ipcMain.handle('get-settings', () => ({
   apiUrl: store.get('apiUrl', process.env.SAAS_API_URL || ''),
   printAccessKey: store.get('printAccessKey', ''),
   computerName: store.get('computerName', os.hostname()),
-  pollingInterval: store.get('pollingInterval', 10000),
+  pollingInterval: Math.max(Number(store.get('pollingInterval', 10000)) || 10000, 10000),
   isPaired: !!store.get('deviceToken'),
   computerId: store.get('computerId', ''),
   appVersion: app.getVersion(),
 }));
 
 ipcMain.handle('save-settings', async (_e, s) => {
-  store.set('apiUrl', s.apiUrl); store.set('printAccessKey', s.printAccessKey);
-  store.set('computerName', s.computerName); store.set('pollingInterval', Number(s.pollingInterval) || 10000);
-  store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
-  stopJobProcessor(); stopHeartbeat(); stopCheckReady();
-  return { success: true };
+  const oldApiUrl = String(store.get('apiUrl', process.env.SAAS_API_URL || '') || '').trim();
+  const oldKey = String(store.get('printAccessKey', '') || '').trim();
+  const newApiUrl = String(s.apiUrl || '').trim();
+  const newKey = String(s.printAccessKey || '').trim();
+  const authChanged = oldApiUrl !== newApiUrl || oldKey !== newKey;
+  const wasPaired = !!store.get('deviceToken');
+
+  const interval = Math.max(Number(s.pollingInterval) || 10000, 10000);
+  store.set('apiUrl', newApiUrl);
+  store.set('printAccessKey', newKey);
+  store.set('computerName', s.computerName || os.hostname());
+  store.set('pollingInterval', interval);
+
+  if (authChanged) {
+    store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
+    stopJobProcessor(); stopHeartbeat(); stopCheckReady();
+    broadcast('pairing-status', { isPaired: false, computerId: null });
+    return { success: true, requiresPairing: true, keptPairing: false, pollingInterval: interval };
+  }
+
+  if (wasPaired) {
+    stopJobProcessor();
+    startJobProcessor();
+    startHeartbeat();
+    startCheckReady();
+    broadcast('pairing-status', { isPaired: true, computerId: store.get('computerId') });
+  }
+
+  return { success: true, requiresPairing: !wasPaired, keptPairing: wasPaired, pollingInterval: interval };
 });
 
 ipcMain.handle('pair-device', async () => {
@@ -230,7 +236,6 @@ ipcMain.handle('sync-printers', async () => {
   catch (e) { return { success: false, error: e.message }; }
 });
 
-// --- IPC: Auto-update ---
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged) return { success: false, message: 'Não disponível em modo dev.' };
   try { await autoUpdater.checkForUpdates(); return { success: true }; }
@@ -240,20 +245,15 @@ ipcMain.handle('check-for-updates', async () => {
 ipcMain.on('download-update', () => autoUpdater.downloadUpdate().catch(console.error));
 ipcMain.on('install-update', () => autoUpdater.quitAndInstall(false, true));
 
-// --- App lifecycle ---
 app.whenReady().then(async () => {
-  // Deep link from first launch: Windows passes URL as a CLI argument
   const deepLinkArg = process.argv.find((a) => a.startsWith('boommprinter://'));
-  if (deepLinkArg) handleDeepLink(deepLinkArg); // saves to pendingDeepLink (no window yet)
-
+  if (deepLinkArg) handleDeepLink(deepLinkArg);
   createWindow();
   await createTray();
   await initializeApp();
-
   if (app.isPackaged) {
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
   }
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
