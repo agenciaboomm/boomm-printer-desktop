@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.13)'
+        description: 'Version to release (e.g. 0.1.14)'
         required: false
-        default: '0.1.13'
+        default: '0.1.14'
 
 permissions:
   contents: write
@@ -43,16 +43,19 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora') { $errors += 'renderer.js: missing Parear Agora' }
           if ($html -notmatch 'acesso de impress') { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html -notmatch 'v0\.1\.13') { $errors += 'index.html: version marker v0.1.13 not found' }
-          if ($html -notmatch 'reduced-polling-presence-debug') { $errors += 'index.html: build marker not found' }
+          if ($html -notmatch 'v0\.1\.14') { $errors += 'index.html: version marker v0.1.14 not found' }
+          if ($html -notmatch 'preserve-pairing-on-save') { $errors += 'index.html: build marker not found' }
           if ($api -notmatch '/functions/desktopApi') { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api -match '/api/desktop/') { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api -notmatch 'trigger-check-ready') { $errors += 'api.js: triggerCheckReady not found' }
-          if ($pkg.version -ne '0.1.13') { $errors += "package.json version is $($pkg.version), expected 0.1.13" }
+          if ($pkg.version -ne '0.1.14') { $errors += "package.json version is $($pkg.version), expected 0.1.14" }
+          if ($main -notmatch 'requiresPairing') { $errors += 'main.js: save-settings pairing preservation not found' }
+          if ($main -notmatch 'keptPairing') { $errors += 'main.js: keptPairing result not found' }
           if ($main -notmatch '60000') { $errors += 'main.js: expected 60000ms cadence not found' }
           if ($main -notmatch '10000') { $errors += 'main.js: expected 10000ms default not found' }
           if ($jobs -notmatch '10000') { $errors += 'job-processor.js: expected 10000ms minimum not found' }
           if ($renderer -notmatch 'persisted_mismatch') { $errors += 'renderer.js: heartbeat debug not found' }
+          if ($renderer -notmatch 'Pareamento mantido') { $errors += 'renderer.js: save feedback for kept pairing not found' }
 
           if ($errors.Count -gt 0) {
             Write-Error ("Source sanity check FAILED:`n" + ($errors -join "`n"))
@@ -117,7 +120,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.13' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.14' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -135,17 +138,16 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.13)
-            - Reduz polling de jobs para mínimo de 10 segundos.
-            - Reduz verificação automática de documentos prontos para 60 segundos.
-            - Heartbeat imediato ao abrir o app e depois a cada 60 segundos.
-            - Botão Testar Conexão mostra debug de persistência do heartbeat.
-            - Contador de concluídos passa a considerar status printed.
+            ### Novidades nesta versão (v0.1.14)
+            - Corrige o botão Salvar para não apagar o pareamento quando muda apenas nome/polling.
+            - Mantém heartbeat, polling e fila ativos após salvar configurações simples.
+            - Se URL do SaaS ou chave de acesso mudarem, o app informa que precisa parear novamente.
+            - Força polling mínimo de 10 segundos para reduzir 429.
             - Mantém impressão, DANFE, etiqueta e renderização PDF sem alterações funcionais.
 
             ### Como confirmar
-            - Header: v0.1.13 Desktop
-            - Configurações: build: v0.1.13 | reduced-polling-presence-debug
+            - Header: v0.1.14 Desktop
+            - Configurações: build: v0.1.14 | preserve-pairing-on-save
 
             ### Checksum SHA256
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
