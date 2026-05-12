@@ -1,6 +1,6 @@
 const { BrowserWindow } = require('electron');
 const { getPendingJobs, updateJobStatus } = require('./api');
-const { printPDF, printZPL } = require('./printer');
+const { printPDF, printZPL, renderHtmlUrlToPdf, isPdfBuffer } = require('./printer');
 const axios = require('axios');
 
 let pollTimer = null;
@@ -30,16 +30,39 @@ async function downloadUrl(url) {
   }
 }
 
+function looksLikeHtml(buffer, contentType = '') {
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('text/html') || ct.includes('application/xhtml')) return true;
+  if (!Buffer.isBuffer(buffer)) return false;
+  const head = buffer.slice(0, 300).toString('utf8').trim().toLowerCase();
+  return head.startsWith('<!doctype html') || head.startsWith('<html') || head.includes('<html');
+}
+
 async function printDocument(url, contentType, printerName, jobType, options = {}) {
   if (!printerName) throw new Error('Nenhuma impressora configurada para este job. Defina uma impressora padrão no SaaS.');
-  const { data, contentType: ct } = await downloadUrl(url);
-  const resolvedType = contentType || ct || '';
+
+  const declaredType = String(contentType || '').toLowerCase();
+
+  if (declaredType.includes('zpl') || jobType === 'zpl') {
+    const { data } = await downloadUrl(url);
+    return await printZPL(printerName, data.toString('utf8'));
+  }
+
+  const { data, contentType: downloadedType } = await downloadUrl(url);
+  let pdfBuffer = data;
+
+  if (looksLikeHtml(data, downloadedType) || looksLikeHtml(data, declaredType)) {
+    broadcast('status-update', { type: 'info', message: 'DANFE HTML detectado: renderizando como PDF real via Electron.' });
+    pdfBuffer = await renderHtmlUrlToPdf(url, options);
+  }
+
+  if (!isPdfBuffer(pdfBuffer)) {
+    const preview = Buffer.isBuffer(pdfBuffer) ? pdfBuffer.slice(0, 80).toString('utf8') : '';
+    throw new Error(`Arquivo recebido não é PDF válido. Content-Type=${downloadedType || declaredType || 'n/a'} Preview=${preview.replace(/\s+/g, ' ').slice(0, 80)}`);
+  }
+
   try {
-    if (resolvedType.includes('zpl') || jobType === 'zpl') {
-      return await printZPL(printerName, data.toString('utf8'));
-    } else {
-      return await printPDF(printerName, data, options);
-    }
+    return await printPDF(printerName, pdfBuffer, options);
   } catch (printErr) {
     throw new Error(`Impressora "${printerName}": ${printErr.message}`);
   }
@@ -68,7 +91,7 @@ async function processJobs() {
         const docs = Array.isArray(job.documents) && job.documents.length > 0
           ? job.documents
           : job.content_url
-            ? [{ url: job.content_url, format: job.content_type || 'PDF', type: 'label', order: 1 }]
+            ? [{ url: job.content_url, format: job.content_type || 'PDF', type: job.document_type || 'label', order: 1 }]
             : [];
 
         if (docs.length === 0) {
