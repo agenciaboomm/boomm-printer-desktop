@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.14)'
+        description: 'Version to release (e.g. 0.1.15)'
         required: false
-        default: '0.1.14'
+        default: '0.1.15'
 
 permissions:
   contents: write
@@ -38,22 +38,27 @@ jobs:
           $api      = Get-Content src\services\api.js       -Raw
           $main     = Get-Content src\main.js               -Raw
           $jobs     = Get-Content src\services\job-processor.js -Raw
+          $printer  = Get-Content src\services\printer.js   -Raw
 
           $errors = @()
 
           if ($renderer -notmatch 'Parear Agora') { $errors += 'renderer.js: missing Parear Agora' }
           if ($html -notmatch 'acesso de impress') { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html -notmatch 'v0\.1\.14') { $errors += 'index.html: version marker v0.1.14 not found' }
-          if ($html -notmatch 'preserve-pairing-on-save') { $errors += 'index.html: build marker not found' }
+          if ($html -notmatch 'v0\.1\.15') { $errors += 'index.html: version marker v0.1.15 not found' }
+          if ($html -notmatch 'html-danfe-render-to-pdf') { $errors += 'index.html: build marker html-danfe-render-to-pdf not found' }
           if ($api -notmatch '/functions/desktopApi') { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api -match '/api/desktop/') { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api -notmatch 'trigger-check-ready') { $errors += 'api.js: triggerCheckReady not found' }
-          if ($pkg.version -ne '0.1.14') { $errors += "package.json version is $($pkg.version), expected 0.1.14" }
+          if ($pkg.version -ne '0.1.15') { $errors += "package.json version is $($pkg.version), expected 0.1.15" }
           if ($main -notmatch 'requiresPairing') { $errors += 'main.js: save-settings pairing preservation not found' }
           if ($main -notmatch 'keptPairing') { $errors += 'main.js: keptPairing result not found' }
           if ($main -notmatch '60000') { $errors += 'main.js: expected 60000ms cadence not found' }
           if ($main -notmatch '10000') { $errors += 'main.js: expected 10000ms default not found' }
           if ($jobs -notmatch '10000') { $errors += 'job-processor.js: expected 10000ms minimum not found' }
+          if ($jobs -notmatch 'renderHtmlUrlToPdf') { $errors += 'job-processor.js: missing DANFE HTML render call' }
+          if ($printer -notmatch 'renderHtmlUrlToPdf') { $errors += 'printer.js: missing renderHtmlUrlToPdf' }
+          if ($printer -notmatch 'printToPDF') { $errors += 'printer.js: missing Electron printToPDF' }
+          if ($printer -notmatch 'isPdfBuffer') { $errors += 'printer.js: missing PDF validation' }
           if ($renderer -notmatch 'persisted_mismatch') { $errors += 'renderer.js: heartbeat debug not found' }
           if ($renderer -notmatch 'Pareamento mantido') { $errors += 'renderer.js: save feedback for kept pairing not found' }
 
@@ -120,7 +125,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.14' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.15' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -138,16 +143,16 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.14)
-            - Corrige o botão Salvar para não apagar o pareamento quando muda apenas nome/polling.
-            - Mantém heartbeat, polling e fila ativos após salvar configurações simples.
-            - Se URL do SaaS ou chave de acesso mudarem, o app informa que precisa parear novamente.
-            - Força polling mínimo de 10 segundos para reduzir 429.
-            - Mantém impressão, DANFE, etiqueta e renderização PDF sem alterações funcionais.
+            ### Novidades nesta versão (v0.1.15)
+            - Corrige DANFE do Tiny/Olist quando vem como HTML doc.view.
+            - Renderiza DANFE HTML como PDF real via Electron printToPDF antes de salvar/imprimir.
+            - Valida PDF real pelo cabeçalho %PDF antes de salvar em Downloads.
+            - Mantém etiqueta e fluxo de pareamento/heartbeat da v0.1.14.
 
             ### Como confirmar
-            - Header: v0.1.14 Desktop
-            - Configurações: build: v0.1.14 | preserve-pairing-on-save
+            - Header: v0.1.15 Desktop
+            - Configurações: build: v0.1.15 | html-danfe-render-to-pdf
+            - Log esperado na DANFE: DANFE HTML detectado: renderizando como PDF real via Electron.
 
             ### Checksum SHA256
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
