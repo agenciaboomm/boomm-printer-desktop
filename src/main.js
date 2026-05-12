@@ -127,7 +127,8 @@ async function createTray() {
 
 function startHeartbeat() {
   stopHeartbeat();
-  heartbeatTimer = setInterval(async () => { try { await heartbeat(); } catch { /* non-fatal */ } }, 30000);
+  heartbeat().catch(() => {});
+  heartbeatTimer = setInterval(async () => { try { await heartbeat(); } catch { /* non-fatal */ } }, 60000);
 }
 function stopHeartbeat() {
   if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
@@ -142,12 +143,13 @@ function startCheckReady() {
       const result = await triggerCheckReady();
       if (result?.result === 'backoff' && typeof result?.backoff_seconds === 'number') {
         stopCheckReady();
-        checkReadyBackoffTimer = setTimeout(startCheckReady, result.backoff_seconds * 1000);
+        const backoffSec = Math.max(result.backoff_seconds, 60);
+        checkReadyBackoffTimer = setTimeout(startCheckReady, backoffSec * 1000);
       }
     } catch (err) {
       const status = err.response?.status;
       if (status === 429) {
-        const backoffSec = err.response?.data?.backoff_seconds || 30;
+        const backoffSec = Math.max(err.response?.data?.backoff_seconds || 60, 60);
         stopCheckReady();
         checkReadyBackoffTimer = setTimeout(startCheckReady, backoffSec * 1000);
       }
@@ -155,7 +157,7 @@ function startCheckReady() {
     } finally {
       isCheckingReady = false;
     }
-  }, 5000);
+  }, 60000);
 }
 function stopCheckReady() {
   if (checkReadyBackoffTimer) { clearTimeout(checkReadyBackoffTimer); checkReadyBackoffTimer = null; }
@@ -180,7 +182,7 @@ ipcMain.handle('get-settings', () => ({
   apiUrl: store.get('apiUrl', process.env.SAAS_API_URL || ''),
   printAccessKey: store.get('printAccessKey', ''),
   computerName: store.get('computerName', os.hostname()),
-  pollingInterval: store.get('pollingInterval', 2000),
+  pollingInterval: store.get('pollingInterval', 10000),
   isPaired: !!store.get('deviceToken'),
   computerId: store.get('computerId', ''),
   appVersion: app.getVersion(),
@@ -188,7 +190,7 @@ ipcMain.handle('get-settings', () => ({
 
 ipcMain.handle('save-settings', async (_e, s) => {
   store.set('apiUrl', s.apiUrl); store.set('printAccessKey', s.printAccessKey);
-  store.set('computerName', s.computerName); store.set('pollingInterval', Number(s.pollingInterval) || 2000);
+  store.set('computerName', s.computerName); store.set('pollingInterval', Number(s.pollingInterval) || 10000);
   store.delete('deviceToken'); store.delete('computerId'); store.delete('companyId');
   stopJobProcessor(); stopHeartbeat(); stopCheckReady();
   return { success: true };
