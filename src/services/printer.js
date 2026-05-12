@@ -1,5 +1,6 @@
 const { exec } = require('child_process');
 const { BrowserWindow } = require('electron');
+const { pathToFileURL } = require('url');
 const net = require('net');
 const fs = require('fs');
 const path = require('path');
@@ -136,6 +137,57 @@ async function savePDFtoDisk(pdfBuffer, options = {}) {
   return { success: true, savedPath: outputPath };
 }
 
+async function printPdfViaElectron(printerName, pdfBuffer, options = {}) {
+  if (!isPdfBuffer(pdfBuffer)) {
+    throw new Error('Conteúdo recebido não é PDF válido para impressão física.');
+  }
+
+  const tmpFile = path.join(os.tmpdir(), `boomm_label_${Date.now()}.pdf`);
+  await fs.promises.writeFile(tmpFile, pdfBuffer);
+
+  const win = new BrowserWindow({
+    show: false,
+    width: 420,
+    height: 640,
+    webPreferences: {
+      sandbox: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  try {
+    await win.loadURL(pathToFileURL(tmpFile).toString());
+    await new Promise((resolve) => setTimeout(resolve, options.renderDelayMs || 1500));
+
+    const printOptions = {
+      silent: true,
+      printBackground: false,
+      deviceName: printerName,
+      copies: Number(options.copies || 1),
+      margins: { marginType: 'none' },
+      pageSize: options.pageSize || { width: 100000, height: 150000 },
+      scaleFactor: 100,
+    };
+
+    console.log(`[printPdfViaElectron] Enviando PDF para "${printerName}" via Electron native print`);
+
+    await new Promise((resolve, reject) => {
+      win.webContents.print(printOptions, (success, failureReason) => {
+        if (success) return resolve();
+        reject(new Error(failureReason || 'webContents.print retornou false'));
+      });
+    });
+
+    return { success: true };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+    setTimeout(() => {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }, 15000);
+  }
+}
+
 async function printPDF(printerName, pdfBuffer, options = {}) {
   const normalized = (printerName || '').toLowerCase();
   console.log(`[printPDF] Impressora: "${printerName}" | normalizado: "${normalized}"`);
@@ -149,42 +201,8 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
     return savePDFtoDisk(pdfBuffer, options);
   }
 
-  console.log('[printPDF] → Modo: impressão física via PowerShell');
-  const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
-
-  try {
-    fs.writeFileSync(tmpFile, pdfBuffer);
-
-    await new Promise((resolve, reject) => {
-      const psScript = [
-        `$file = '${tmpFile.replace(/'/g, "''")}'`,
-        `$printer = '${printerName.replace(/'/g, "''")}'`,
-        `$shell = New-Object -ComObject Shell.Application`,
-        `$dir = $shell.Namespace([System.IO.Path]::GetDirectoryName($file))`,
-        `$item = $dir.ParseName([System.IO.Path]::GetFileName($file))`,
-        `$item.InvokeVerbEx('printto', $printer)`,
-        `Start-Sleep -Seconds 4`,
-      ].join('; ');
-
-      exec(`powershell -NonInteractive -Command "${psScript}"`, { timeout: 30000 }, (err) => {
-        if (err) {
-          const fallback = `Start-Process -FilePath '${tmpFile.replace(/'/g, "''")}' -Verb print -Wait`;
-          exec(`powershell -NonInteractive -Command "${fallback}"`, { timeout: 20000 }, (err2) => {
-            if (err2) reject(new Error('Falha ao imprimir PDF: ' + err2.message));
-            else resolve();
-          });
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    return { success: true };
-  } finally {
-    setTimeout(() => {
-      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-    }, 15000);
-  }
+  console.log('[printPDF] → Modo: impressão física via Electron native print');
+  return printPdfViaElectron(printerName, pdfBuffer, options);
 }
 
 async function printZPL(printerName, zplContent) {
