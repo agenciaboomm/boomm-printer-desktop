@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.9)'
+        description: 'Version to release (e.g. 0.1.13)'
         required: false
-        default: '0.1.9'
+        default: '0.1.13'
 
 permissions:
   contents: write
@@ -36,22 +36,25 @@ jobs:
           $renderer = Get-Content src\renderer\renderer.js -Raw
           $html     = Get-Content src\renderer\index.html  -Raw
           $api      = Get-Content src\services\api.js       -Raw
+          $main     = Get-Content src\main.js               -Raw
+          $jobs     = Get-Content src\services\job-processor.js -Raw
 
           $errors = @()
 
-          if ($renderer -notmatch 'Parear Agora')            { $errors += 'renderer.js: missing Parear Agora' }
-          if ($html     -notmatch 'acesso de impress')       { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html     -notmatch 'v0\.1\.9')               { $errors += 'index.html: version marker v0.1.9 not found' }
-          if ($api      -notmatch '/functions/desktopApi')   { $errors += 'api.js: desktopApi endpoint not found' }
-          if ($api      -match    '/api/desktop/')           { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
-          if ($api      -notmatch 'trigger-check-ready')     { $errors += 'api.js: triggerCheckReady not found' }
-          if ($renderer -match    'v0\.1\.0 Desktop')       { $errors += 'renderer.js: hardcoded v0.1.0 found' }
-          if ($html     -match    '>CHAVE DE API<')          { $errors += 'index.html: old label CHAVE DE API found' }
-          if ($html     -match    'Chave de API[^a-z]')      { $errors += 'index.html: old text Chave de API found' }
-          if ($pkg.version -ne '0.1.9')                     { $errors += "package.json version is $($pkg.version), expected 0.1.9" }
+          if ($renderer -notmatch 'Parear Agora') { $errors += 'renderer.js: missing Parear Agora' }
+          if ($html -notmatch 'acesso de impress') { $errors += 'index.html: missing Chave de acesso de impressao' }
+          if ($html -notmatch 'v0\.1\.13') { $errors += 'index.html: version marker v0.1.13 not found' }
+          if ($html -notmatch 'reduced-polling-presence-debug') { $errors += 'index.html: build marker not found' }
+          if ($api -notmatch '/functions/desktopApi') { $errors += 'api.js: desktopApi endpoint not found' }
+          if ($api -match '/api/desktop/') { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
+          if ($api -notmatch 'trigger-check-ready') { $errors += 'api.js: triggerCheckReady not found' }
+          if ($pkg.version -ne '0.1.13') { $errors += "package.json version is $($pkg.version), expected 0.1.13" }
+          if ($main -notmatch '60000') { $errors += 'main.js: expected 60000ms cadence not found' }
+          if ($main -notmatch '10000') { $errors += 'main.js: expected 10000ms default not found' }
+          if ($jobs -notmatch '10000') { $errors += 'job-processor.js: expected 10000ms minimum not found' }
+          if ($renderer -notmatch 'persisted_mismatch') { $errors += 'renderer.js: heartbeat debug not found' }
 
           if ($errors.Count -gt 0) {
-            Write-Host ""
             Write-Error ("Source sanity check FAILED:`n" + ($errors -join "`n"))
             exit 1
           }
@@ -114,7 +117,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.9' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.13' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -132,31 +135,23 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.9)
-            - **Fix**: Microsoft Print to PDF salva com timestamp no nome (`NF 4835 — Cliente_1748123456789.pdf`) — sem sobrescrever arquivos
-            - **Fix**: `fs.promises` (async) evita travamento da UI durante salvamento em disco
-            - **Fix**: caminho exato do PDF aparece na Atividade Recente após salvar
-            - **Fix**: `isCheckingReady` guard evita chamadas paralelas ao check-ready quando o SaaS demora > 5 s
-            - **Herdado de v0.1.8**: salvamento direto em `Downloads\Boomm Printer\` sem diálogo do Windows
+            ### Novidades nesta versão (v0.1.13)
+            - Reduz polling de jobs para mínimo de 10 segundos.
+            - Reduz verificação automática de documentos prontos para 60 segundos.
+            - Heartbeat imediato ao abrir o app e depois a cada 60 segundos.
+            - Botão Testar Conexão mostra debug de persistência do heartbeat.
+            - Contador de concluídos passa a considerar status printed.
+            - Mantém impressão, DANFE, etiqueta e renderização PDF sem alterações funcionais.
 
-            ### Como confirmar que esta é a versão certa
-            Após instalar, o app deve mostrar exatamente:
-            - Header: **v0.1.9 Desktop**
-            - Configurações → rodapé verde: `build: v0.1.9 | async-pdf + timestamp + savedPath-broadcast`
-
-            ### Instalação limpa (recomendado)
-            1. Feche o app pela bandeja do sistema (botão direito → Sair)
-            2. Desinstale a versão anterior em Configurações do Windows → Aplicativos → BoommPrinter
-            3. Baixe e instale `BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe` como Administrador
+            ### Como confirmar
+            - Header: v0.1.13 Desktop
+            - Configurações: build: v0.1.13 | reduced-polling-presence-debug
 
             ### Checksum SHA256
-            ```
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
-            ```
-            **Tamanho:** ${{ steps.sha256.outputs.exesize }}
+
+            Tamanho: ${{ steps.sha256.outputs.exesize }}
           files: |
             dist/BoommPrinterSetup-*.exe
             dist/latest.yml
             dist/SHA256SUMS.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
