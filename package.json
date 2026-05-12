@@ -1,6 +1,6 @@
 {
   "name": "boomm-printer-desktop",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Boomm Printer Desktop - App local para impressão de etiquetas via SaaS Boomm Printer",
   "main": "src/main.js",
   "private": true,
