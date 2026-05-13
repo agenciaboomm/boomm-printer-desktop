@@ -111,7 +111,12 @@ async function processJobs() {
 
         for (const doc of docs) {
           if (!doc.url) continue;
-          const result = await printDocument(doc.url, doc.format, printerName, doc.type, { title: label });
+          const result = await printDocument(doc.url, doc.format, printerName, doc.type, {
+            title: label,
+            documentType: doc.type || job.document_type || job.documentType,
+            jobType: job.type,
+            jobId: job.id,
+          });
           if (result?.savedPath) {
             broadcast('status-update', { type: 'info', message: `PDF salvo em: ${result.savedPath}` });
           } else if (isPDFToDisk) {
