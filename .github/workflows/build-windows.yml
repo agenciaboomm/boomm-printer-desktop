@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.16)'
+        description: 'Version to release (e.g. 0.1.17)'
         required: false
-        default: '0.1.16'
+        default: '0.1.17'
 
 permissions:
   contents: write
@@ -44,23 +44,26 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora') { $errors += 'renderer.js: missing Parear Agora' }
           if ($html -notmatch 'acesso de impress') { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html -notmatch 'v0\.1\.16') { $errors += 'index.html: version marker v0.1.16 not found' }
-          if ($html -notmatch 'electron-native-label-print') { $errors += 'index.html: build marker electron-native-label-print not found' }
+          if ($html -notmatch 'v0\.1\.17') { $errors += 'index.html: version marker v0.1.17 not found' }
+          if ($html -notmatch 'driver-default-label-size') { $errors += 'index.html: build marker driver-default-label-size not found' }
           if ($api -notmatch '/functions/desktopApi') { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api -match '/api/desktop/') { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api -notmatch 'trigger-check-ready') { $errors += 'api.js: triggerCheckReady not found' }
-          if ($pkg.version -ne '0.1.16') { $errors += "package.json version is $($pkg.version), expected 0.1.16" }
+          if ($pkg.version -ne '0.1.17') { $errors += "package.json version is $($pkg.version), expected 0.1.17" }
           if ($main -notmatch 'requiresPairing') { $errors += 'main.js: save-settings pairing preservation not found' }
           if ($main -notmatch 'keptPairing') { $errors += 'main.js: keptPairing result not found' }
           if ($main -notmatch '60000') { $errors += 'main.js: expected 60000ms cadence not found' }
           if ($main -notmatch '10000') { $errors += 'main.js: expected 10000ms default not found' }
           if ($jobs -notmatch '10000') { $errors += 'job-processor.js: expected 10000ms minimum not found' }
           if ($jobs -notmatch 'renderHtmlUrlToPdf') { $errors += 'job-processor.js: missing DANFE HTML render call' }
+          if ($jobs -notmatch 'documentType') { $errors += 'job-processor.js: missing documentType print metadata' }
           if ($printer -notmatch 'renderHtmlUrlToPdf') { $errors += 'printer.js: missing renderHtmlUrlToPdf' }
           if ($printer -notmatch 'printToPDF') { $errors += 'printer.js: missing Electron printToPDF' }
           if ($printer -notmatch 'isPdfBuffer') { $errors += 'printer.js: missing PDF validation' }
           if ($printer -notmatch 'printPdfViaElectron') { $errors += 'printer.js: missing physical PDF Electron print path' }
           if ($printer -notmatch 'webContents\.print') { $errors += 'printer.js: missing webContents.print for physical PDF labels' }
+          if ($printer -notmatch 'usando preferências do driver') { $errors += 'printer.js: missing driver-preferences log marker' }
+          if ($printer -match 'pageSize: options\.pageSize') { $errors += 'printer.js: still forces physical pageSize from options' }
           if ($printer -match 'Shell\.Application') { $errors += 'printer.js: still uses Shell.Application printto path' }
           if ($renderer -notmatch 'persisted_mismatch') { $errors += 'renderer.js: heartbeat debug not found' }
           if ($renderer -notmatch 'Pareamento mantido') { $errors += 'renderer.js: save feedback for kept pairing not found' }
@@ -128,7 +131,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.16' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.17' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -146,17 +149,17 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.16)
-            - Corrige impressão física de etiquetas PDF em impressoras térmicas.
-            - Troca o caminho Shell.Application/printto por Electron native webContents.print.
-            - Mantém DANFE HTML renderizada como PDF real antes de salvar/imprimir.
-            - Bloqueia JavaScript/window.print da DANFE HTML durante a renderização para evitar janelas de impressão.
-            - Mantém Microsoft Print to PDF salvando direto em disco.
+            ### Novidades nesta versão (v0.1.17)
+            - Mantém o caminho que imprimiu etiqueta corretamente na Argox.
+            - Remove o pageSize físico forçado para respeitar as preferências do driver da impressora térmica.
+            - Envia metadados de tipo de documento para diferenciar etiqueta e DANFE no desktop.
+            - Mantém Electron native webContents.print para PDF físico.
+            - Mantém DANFE HTML renderizada como PDF real e Microsoft Print to PDF salvando direto em disco.
 
             ### Como confirmar
-            - Header: v0.1.16 Desktop
-            - Configurações: build: v0.1.16 | electron-native-label-print
-            - Log esperado etiqueta: Modo: impressão física via Electron native print
+            - Header: v0.1.17 Desktop
+            - Configurações: build: v0.1.17 | driver-default-label-size
+            - Log esperado etiqueta: usando preferências do driver
 
             ### Checksum SHA256
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
