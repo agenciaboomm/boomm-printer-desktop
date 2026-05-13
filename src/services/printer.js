@@ -64,6 +64,13 @@ function isPdfBuffer(buffer) {
   return buffer.slice(0, 5).toString('ascii') === '%PDF-';
 }
 
+function isLabelJob(options = {}) {
+  const title = String(options.title || '').toLowerCase();
+  const docType = String(options.documentType || '').toLowerCase();
+  const jobType = String(options.jobType || '').toLowerCase();
+  return docType.includes('label') || docType.includes('etiqueta') || jobType.includes('label') || title.includes('etiqueta');
+}
+
 async function renderHtmlUrlToPdf(url, options = {}) {
   console.log(`[renderHtmlUrlToPdf] Renderizando HTML como PDF: ${url}`);
 
@@ -104,8 +111,6 @@ async function renderHtmlUrlToPdf(url, options = {}) {
 }
 
 // For "Microsoft Print to PDF": bypass the print driver and save directly to disk.
-// The Windows Print to PDF driver suppresses its save dialog in NonInteractive mode,
-// so a normal printto verb call silently discards the output — nothing is saved.
 async function savePDFtoDisk(pdfBuffer, options = {}) {
   if (!isPdfBuffer(pdfBuffer)) {
     const preview = Buffer.isBuffer(pdfBuffer) ? pdfBuffer.slice(0, 80).toString('utf8') : '';
@@ -142,13 +147,14 @@ async function printPdfViaElectron(printerName, pdfBuffer, options = {}) {
     throw new Error('Conteúdo recebido não é PDF válido para impressão física.');
   }
 
-  const tmpFile = path.join(os.tmpdir(), `boomm_label_${Date.now()}.pdf`);
+  const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
   await fs.promises.writeFile(tmpFile, pdfBuffer);
 
+  const labelJob = isLabelJob(options);
   const win = new BrowserWindow({
     show: false,
-    width: 420,
-    height: 640,
+    width: labelJob ? 420 : 1240,
+    height: labelJob ? 640 : 1754,
     webPreferences: {
       sandbox: true,
       nodeIntegration: false,
@@ -160,17 +166,19 @@ async function printPdfViaElectron(printerName, pdfBuffer, options = {}) {
     await win.loadURL(pathToFileURL(tmpFile).toString());
     await new Promise((resolve) => setTimeout(resolve, options.renderDelayMs || 1500));
 
+    // Important: for physical printers, especially thermal label printers,
+    // do NOT force pageSize. Let the Windows driver/preferences define media size,
+    // orientation, fit-to-page and density. This mirrors Base Printer behavior.
     const printOptions = {
       silent: true,
       printBackground: false,
       deviceName: printerName,
       copies: Number(options.copies || 1),
       margins: { marginType: 'none' },
-      pageSize: options.pageSize || { width: 100000, height: 150000 },
-      scaleFactor: 100,
+      scaleFactor: Number(options.scaleFactor || 100),
     };
 
-    console.log(`[printPdfViaElectron] Enviando PDF para "${printerName}" via Electron native print`);
+    console.log(`[printPdfViaElectron] Enviando ${labelJob ? 'etiqueta' : 'PDF'} para "${printerName}" via Electron native print usando preferências do driver`);
 
     await new Promise((resolve, reject) => {
       win.webContents.print(printOptions, (success, failureReason) => {
@@ -201,7 +209,7 @@ async function printPDF(printerName, pdfBuffer, options = {}) {
     return savePDFtoDisk(pdfBuffer, options);
   }
 
-  console.log('[printPDF] → Modo: impressão física via Electron native print');
+  console.log('[printPDF] → Modo: impressão física via Electron native print respeitando driver');
   return printPdfViaElectron(printerName, pdfBuffer, options);
 }
 
