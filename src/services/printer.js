@@ -71,6 +71,22 @@ function isLabelJob(options = {}) {
   return docType.includes('label') || docType.includes('etiqueta') || jobType.includes('label') || title.includes('etiqueta');
 }
 
+function isThermalLabelPrinter(printerName = '') {
+  const p = String(printerName || '').toLowerCase();
+  return (
+    p.includes('argox') ||
+    p.includes('os-2140') ||
+    p.includes('ppla') ||
+    p.includes('zebra') ||
+    p.includes('zdesigner') ||
+    p.includes('elgin l42') ||
+    p.includes('l42pro') ||
+    p.includes('4barcode') ||
+    p.includes('thermal') ||
+    p.includes('etiqueta')
+  );
+}
+
 async function renderHtmlUrlToPdf(url, options = {}) {
   console.log(`[renderHtmlUrlToPdf] Renderizando HTML como PDF: ${url}`);
 
@@ -147,10 +163,20 @@ async function printPdfViaElectron(printerName, pdfBuffer, options = {}) {
     throw new Error('Conteúdo recebido não é PDF válido para impressão física.');
   }
 
+  const labelJob = isLabelJob(options);
+  const thermalPrinter = isThermalLabelPrinter(printerName);
+
+  if (!labelJob && thermalPrinter) {
+    throw new Error(
+      `DANFE A4 bloqueada para impressora térmica "${printerName}". ` +
+      'Configure a Impressora NF como Microsoft Print to PDF ou uma impressora A4. ' +
+      'Para imprimir DANFE na Argox será necessário gerar DANFE simplificada 100x150 em etapa futura.'
+    );
+  }
+
   const tmpFile = path.join(os.tmpdir(), `boomm_pdf_${Date.now()}.pdf`);
   await fs.promises.writeFile(tmpFile, pdfBuffer);
 
-  const labelJob = isLabelJob(options);
   const win = new BrowserWindow({
     show: false,
     width: labelJob ? 420 : 1240,
