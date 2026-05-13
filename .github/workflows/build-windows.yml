@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.1.17)'
+        description: 'Version to release (e.g. 0.1.18)'
         required: false
-        default: '0.1.17'
+        default: '0.1.18'
 
 permissions:
   contents: write
@@ -44,12 +44,12 @@ jobs:
 
           if ($renderer -notmatch 'Parear Agora') { $errors += 'renderer.js: missing Parear Agora' }
           if ($html -notmatch 'acesso de impress') { $errors += 'index.html: missing Chave de acesso de impressao' }
-          if ($html -notmatch 'v0\.1\.17') { $errors += 'index.html: version marker v0.1.17 not found' }
-          if ($html -notmatch 'driver-default-label-size') { $errors += 'index.html: build marker driver-default-label-size not found' }
+          if ($html -notmatch 'v0\.1\.18') { $errors += 'index.html: version marker v0.1.18 not found' }
+          if ($html -notmatch 'block-a4-danfe-on-thermal') { $errors += 'index.html: build marker block-a4-danfe-on-thermal not found' }
           if ($api -notmatch '/functions/desktopApi') { $errors += 'api.js: desktopApi endpoint not found' }
           if ($api -match '/api/desktop/') { $errors += 'api.js: still uses deprecated /api/desktop/ routes' }
           if ($api -notmatch 'trigger-check-ready') { $errors += 'api.js: triggerCheckReady not found' }
-          if ($pkg.version -ne '0.1.17') { $errors += "package.json version is $($pkg.version), expected 0.1.17" }
+          if ($pkg.version -ne '0.1.18') { $errors += "package.json version is $($pkg.version), expected 0.1.18" }
           if ($main -notmatch 'requiresPairing') { $errors += 'main.js: save-settings pairing preservation not found' }
           if ($main -notmatch 'keptPairing') { $errors += 'main.js: keptPairing result not found' }
           if ($main -notmatch '60000') { $errors += 'main.js: expected 60000ms cadence not found' }
@@ -63,6 +63,8 @@ jobs:
           if ($printer -notmatch 'printPdfViaElectron') { $errors += 'printer.js: missing physical PDF Electron print path' }
           if ($printer -notmatch 'webContents\.print') { $errors += 'printer.js: missing webContents.print for physical PDF labels' }
           if ($printer -notmatch 'usando preferências do driver') { $errors += 'printer.js: missing driver-preferences log marker' }
+          if ($printer -notmatch 'isThermalLabelPrinter') { $errors += 'printer.js: missing thermal-printer detection' }
+          if ($printer -notmatch 'DANFE A4 bloqueada') { $errors += 'printer.js: missing A4 DANFE thermal block' }
           if ($printer -match 'pageSize: options\.pageSize') { $errors += 'printer.js: still forces physical pageSize from options' }
           if ($printer -match 'Shell\.Application') { $errors += 'printer.js: still uses Shell.Application printto path' }
           if ($renderer -notmatch 'persisted_mismatch') { $errors += 'renderer.js: heartbeat debug not found' }
@@ -131,7 +133,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            TAG="v${{ github.event.inputs.version || '0.1.17' }}"
+            TAG="v${{ github.event.inputs.version || '0.1.18' }}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
@@ -149,17 +151,18 @@ jobs:
 
             App local Windows para impressão de etiquetas PDF/ZPL.
 
-            ### Novidades nesta versão (v0.1.17)
-            - Mantém o caminho que imprimiu etiqueta corretamente na Argox.
-            - Remove o pageSize físico forçado para respeitar as preferências do driver da impressora térmica.
-            - Envia metadados de tipo de documento para diferenciar etiqueta e DANFE no desktop.
-            - Mantém Electron native webContents.print para PDF físico.
-            - Mantém DANFE HTML renderizada como PDF real e Microsoft Print to PDF salvando direto em disco.
+            ### Novidades nesta versão (v0.1.18)
+            - Mantém etiqueta PDF imprimindo na Argox pelo caminho que funcionou.
+            - Bloqueia DANFE A4 em impressora térmica para evitar desperdício e impressão cortada em várias etiquetas.
+            - Mantém a impressora térmica respeitando as preferências do driver.
+            - Mantém DANFE HTML renderizada como PDF real.
+            - Mantém Microsoft Print to PDF salvando direto em disco.
 
             ### Como confirmar
-            - Header: v0.1.17 Desktop
-            - Configurações: build: v0.1.17 | driver-default-label-size
-            - Log esperado etiqueta: usando preferências do driver
+            - Header: v0.1.18 Desktop
+            - Configurações: build: v0.1.18 | block-a4-danfe-on-thermal
+            - Se uma DANFE A4 for enviada para Argox, o job deve falhar com mensagem orientando configurar NF em PDF/A4.
+            - Etiqueta continua imprimindo na Argox.
 
             ### Checksum SHA256
             ${{ steps.sha256.outputs.sha256 }}  BoommPrinterSetup-${{ steps.tag.outputs.version }}.exe
